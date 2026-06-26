@@ -14,7 +14,7 @@ Les fichiers PWA sont dans `assets/` :
 - `assets/apple-touch-icon.png`
 - `assets/favicon.png`
 
-Si vous avez le fichier source `Logo RSA(1).png`, remplacez `assets/logo.png` puis exportez aussi les versions `192x192`, `512x512` et `180x180` pour conserver une icône propre sur Android et iPhone.
+Ces fichiers sont référencés par le manifest, Safari iPhone et le favicon navigateur.
 
 ## Principe
 

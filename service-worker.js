@@ -1,6 +1,6 @@
 "use strict";
 
-const CACHE_NAME = "race-split-assistant-v2";
+const CACHE_NAME = "race-split-assistant-v3";
 const ASSETS = [
   "./",
   "./index.html",
