@@ -4,6 +4,18 @@ Race Split Assistant est une WebApp/PWA mobile-first pour préparer une stratég
 
 L’application fonctionne sans GPS, sans capteurs de mouvement, sans API externe, sans librairie externe et sans framework. Elle reste gratuite, offline après un premier chargement, et stocke les données dans `localStorage`.
 
+## Logo et icônes
+
+Les fichiers PWA sont dans `assets/` :
+
+- `assets/logo.png`
+- `assets/icon-192.png`
+- `assets/icon-512.png`
+- `assets/apple-touch-icon.png`
+- `assets/favicon.png`
+
+Si vous avez le fichier source `Logo RSA(1).png`, remplacez `assets/logo.png` puis exportez aussi les versions `192x192`, `512x512` et `180x180` pour conserver une icône propre sur Android et iPhone.
+
 ## Principe
 
 1. Créez une course avec une distance et un objectif chrono.
@@ -108,11 +120,15 @@ L’import valide la structure et ne supprime pas les courses existantes.
 2. Ouvrez le menu Chrome.
 3. Choisissez `Installer l’application` ou `Ajouter à l’écran d’accueil`.
 
+Si le navigateur supporte l’installation PWA, le bouton `Installer l’application` apparaît directement sur l’accueil.
+
 ### iPhone Safari
 
 1. Ouvrez l’application dans Safari.
 2. Touchez le bouton de partage.
 3. Choisissez `Sur l’écran d’accueil`.
+
+Sur iPhone, le bouton d’installation automatique n’existe pas. L’application affiche donc les étapes à suivre dans Safari.
 
 ## Lancer en local
 
@@ -147,6 +163,19 @@ Le service worker met en cache :
 - `manifest.json`
 
 Après un premier chargement, l’application peut fonctionner hors ligne.
+
+## Arrière-plan et chrono
+
+Une PWA ne peut pas garantir une exécution continue en arrière-plan comme une application native.
+
+Race Split Assistant ne tente donc pas de faire tourner un compteur en arrière-plan. Le chrono reste fiable grâce à `Date.now()` :
+
+- l’heure réelle de départ est sauvegardée ;
+- les pauses sont sauvegardées ;
+- le checkpoint actuel, l’historique et la distance estimée sont sauvegardés ;
+- quand vous revenez dans l’application, le temps réel est recalculé correctement.
+
+Pendant le mode live, l’application essaie d’utiliser Screen Wake Lock si le navigateur le permet. Si ce n’est pas disponible, aucune erreur n’est affichée et le chrono reste correct à la reprise.
 
 ## Limites
 

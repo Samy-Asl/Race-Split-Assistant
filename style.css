@@ -252,6 +252,13 @@ h3 {
   background: #ffffff;
 }
 
+.app-logo {
+  width: 72px;
+  height: 72px;
+  border-radius: 16px;
+  box-shadow: var(--shadow);
+}
+
 .home-hero h2 {
   margin: 0;
   font-size: 1.55rem;
@@ -268,6 +275,28 @@ h3 {
   gap: 8px;
   margin: 0;
   padding-left: 22px;
+}
+
+.install-card {
+  display: grid;
+  gap: 12px;
+}
+
+.install-card p {
+  margin: 0;
+  color: var(--muted);
+}
+
+.install-steps {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding-left: 22px;
+}
+
+.compact-installed {
+  border-color: rgba(31, 138, 76, 0.28);
+  background: rgba(31, 138, 76, 0.08);
 }
 
 .add-checkpoint-button {
@@ -822,6 +851,26 @@ textarea {
   box-shadow: var(--shadow);
 }
 
+.update-notice {
+  position: fixed;
+  right: 14px;
+  bottom: 14px;
+  left: 14px;
+  z-index: 70;
+  display: grid;
+  gap: 10px;
+  align-items: center;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #ffffff;
+  box-shadow: var(--shadow);
+}
+
+.update-notice span {
+  font-weight: 850;
+}
+
 .sr-only {
   position: absolute;
   width: 1px;
@@ -866,5 +915,10 @@ textarea {
 
   .screen-nav {
     grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
+
+  .update-notice {
+    left: auto;
+    width: 360px;
   }
 }

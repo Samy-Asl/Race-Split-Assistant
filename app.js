@@ -33,12 +33,25 @@ let activeRun = null;
 let liveTick = null;
 let wakeLock = null;
 let lastMessage = "";
+let deferredInstallPrompt = null;
+let serviceWorkerRegistration = null;
+let waitingServiceWorker = null;
+let reloadingForUpdate = false;
 
 const app = document.querySelector("#app");
 const screenTitle = document.querySelector("#screen-title");
 
 document.addEventListener("DOMContentLoaded", init);
 window.addEventListener("hashchange", renderRoute);
+window.addEventListener("beforeinstallprompt", (event) => {
+  event.preventDefault();
+  deferredInstallPrompt = event;
+  if ((location.hash || "#home") === "#home") renderHome();
+});
+window.addEventListener("appinstalled", () => {
+  deferredInstallPrompt = null;
+  if ((location.hash || "#home") === "#home") renderHome();
+});
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "visible" && location.hash === "#live") {
     requestWakeLock();
@@ -101,8 +114,51 @@ function confirmLeaveLiveToMenu() {
 
 function registerServiceWorker() {
   if ("serviceWorker" in navigator) {
-    navigator.serviceWorker.register("service-worker.js").catch(() => {});
+    navigator.serviceWorker.register("service-worker.js").then((registration) => {
+      serviceWorkerRegistration = registration;
+      if (registration.waiting) {
+        showUpdateNotice(registration.waiting);
+      }
+
+      registration.addEventListener("updatefound", () => {
+        const newWorker = registration.installing;
+        if (!newWorker) return;
+        newWorker.addEventListener("statechange", () => {
+          if (newWorker.state === "installed" && navigator.serviceWorker.controller) {
+            showUpdateNotice(newWorker);
+          }
+        });
+      });
+    }).catch(() => {});
+
+    navigator.serviceWorker.addEventListener("controllerchange", () => {
+      if (reloadingForUpdate) return;
+      reloadingForUpdate = true;
+      window.location.reload();
+    });
   }
+}
+
+function showUpdateNotice(worker) {
+  waitingServiceWorker = worker;
+  const existing = document.querySelector("#update-notice");
+  if (existing) return;
+
+  const notice = document.createElement("div");
+  notice.id = "update-notice";
+  notice.className = "update-notice";
+  notice.innerHTML = `
+    <span>Nouvelle version disponible</span>
+    <button class="button secondary" type="button" data-action="apply-update">Mettre à jour</button>
+  `;
+  notice.querySelector("[data-action='apply-update']").addEventListener("click", () => {
+    if (waitingServiceWorker) {
+      waitingServiceWorker.postMessage({ type: "SKIP_WAITING" });
+    } else {
+      window.location.reload();
+    }
+  });
+  document.body.appendChild(notice);
 }
 
 async function requestWakeLock() {
@@ -148,6 +204,8 @@ function renderRoute() {
     renderLive();
   } else if (screen === "resume") {
     renderResumeRun();
+  } else if (screen === "install") {
+    renderInstallHelp();
   } else if (screen === "report") {
     renderReport(id);
   } else {
@@ -172,6 +230,7 @@ function renderHome() {
   app.innerHTML = `
     <section class="stack">
       <div class="home-hero">
+        <img class="app-logo" src="assets/logo.png" alt="Race Split Assistant">
         <h2>Race Split Assistant</h2>
         <p>Prépare tes splits. Suis ton chrono. Gère ta course.</p>
         <div class="actions two">
@@ -180,6 +239,7 @@ function renderHome() {
         </div>
         <input class="sr-only" id="import-json" type="file" accept="application/json">
       </div>
+      ${renderInstallCard()}
       <div class="card how-card">
         <h2>Comment ça marche ?</h2>
         <ol class="how-list">
@@ -205,6 +265,8 @@ function renderHome() {
 
   app.querySelector("[data-action='export']").addEventListener("click", exportCourses);
   app.querySelector("#import-json").addEventListener("change", importCourses);
+  const installButton = app.querySelector("[data-action='install-app']");
+  if (installButton) installButton.addEventListener("click", installApp);
 
   app.querySelectorAll("[data-action='delete-course']").forEach((button) => {
     button.addEventListener("click", () => confirmDeleteCourse(button.dataset.id));
@@ -223,6 +285,115 @@ function renderHome() {
   app.querySelectorAll("[data-action='quick-start']").forEach((button) => {
     button.addEventListener("click", () => startRun(button.dataset.id));
   });
+}
+
+function detectInstallContext() {
+  const userAgent = navigator.userAgent || "";
+  const isIos = /iphone|ipad|ipod/i.test(userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  const isAndroid = /android/i.test(userAgent);
+  const isStandalone = window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone === true;
+
+  return {
+    isIos,
+    isAndroid,
+    isStandalone,
+    supportsPrompt: Boolean(deferredInstallPrompt)
+  };
+}
+
+function renderInstallCard() {
+  const context = detectInstallContext();
+
+  if (context.isStandalone) {
+    return `
+      <div class="card install-card compact-installed">
+        <h2>Application installée</h2>
+        <p>Race Split Assistant est lancée comme une application.</p>
+      </div>
+    `;
+  }
+
+  if (context.supportsPrompt) {
+    return `
+      <div class="card install-card">
+        <h2>Installer l’application</h2>
+        <p>Ajoute Race Split Assistant à ton écran d’accueil pour l’utiliser comme une application, même hors connexion.</p>
+        <div class="actions two">
+          <button class="button" type="button" data-action="install-app">Installer l’application</button>
+          <button class="button secondary" type="button" data-route="#install">Télécharger</button>
+        </div>
+      </div>
+    `;
+  }
+
+  if (context.isIos) {
+    return `
+      <div class="card install-card">
+        <h2>Installer l’application</h2>
+        <p>Ajoute Race Split Assistant à ton écran d’accueil pour l’utiliser comme une application, même hors connexion.</p>
+        <ol class="install-steps">
+          <li>Ouvre le site dans Safari.</li>
+          <li>Appuie sur Partager.</li>
+          <li>Choisis Sur l’écran d’accueil.</li>
+          <li>Appuie sur Ajouter.</li>
+        </ol>
+        <button class="button secondary" type="button" data-route="#install">Télécharger</button>
+      </div>
+    `;
+  }
+
+  return `
+      <div class="card install-card">
+        <h2>Installer l’application</h2>
+        <p>Si ton navigateur le propose, utilise son menu puis Ajouter à l’écran d’accueil. L’app fonctionnera hors connexion après un premier chargement.</p>
+        <button class="button secondary" type="button" data-route="#install">Télécharger</button>
+      </div>
+    `;
+}
+
+function renderInstallHelp() {
+  setTitle("Installer");
+  app.innerHTML = `
+    <section class="stack">
+      <div class="card install-card">
+        <img class="app-logo" src="assets/logo.png" alt="Race Split Assistant">
+        <h2>Installer Race Split Assistant</h2>
+        <p>Race Split Assistant est une PWA. Elle s’ajoute à l’écran d’accueil depuis le navigateur et fonctionne hors connexion après un premier chargement.</p>
+      </div>
+      <div class="card">
+        <h2>Android</h2>
+        <ol class="install-steps">
+          <li>Ouvre le lien GitHub Pages dans Chrome.</li>
+          <li>Appuie sur Installer l’application si le bouton apparaît.</li>
+          <li>Sinon, ouvre le menu Chrome puis Ajouter à l’écran d’accueil.</li>
+        </ol>
+      </div>
+      <div class="card">
+        <h2>iPhone</h2>
+        <ol class="install-steps">
+          <li>Ouvre le lien dans Safari.</li>
+          <li>Appuie sur Partager.</li>
+          <li>Choisis Sur l’écran d’accueil.</li>
+          <li>Appuie sur Ajouter.</li>
+        </ol>
+      </div>
+      <div class="card">
+        <h2>À savoir</h2>
+        <p>L’app ne tourne pas comme une application native en arrière-plan. Le chrono reste fiable car il est recalculé avec Date.now() quand tu reviens dans l’app.</p>
+        <p>Les courses, l’historique live, les pauses et la distance estimée restent sauvegardés localement sur ce navigateur.</p>
+      </div>
+      <button class="button secondary" type="button" data-route="#home">Retour accueil</button>
+    </section>
+  `;
+}
+
+async function installApp() {
+  if (!deferredInstallPrompt) return;
+  const promptEvent = deferredInstallPrompt;
+  deferredInstallPrompt = null;
+  promptEvent.prompt();
+  await promptEvent.userChoice.catch(() => null);
+  if ((location.hash || "#home") === "#home") renderHome();
 }
 
 function renderResumeRun() {
@@ -794,7 +965,7 @@ function renderLive() {
         <button class="button secondary" type="button" data-action="toggle-pause">Pause</button>
         <button class="button danger secondary-danger" type="button" data-action="reset-run">Reset</button>
       </div>
-      <p class="wake-note">Gardez l’écran actif si votre téléphone ne prend pas en charge le maintien d’écran.</p>
+      <p class="wake-note">Si l’écran se verrouille, le chrono restera correct à la reprise.</p>
       <details class="card compact-history">
         <summary>Historique</summary>
         <div id="live-history" class="history-list"></div>
