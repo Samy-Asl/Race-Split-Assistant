@@ -49,9 +49,8 @@ function init() {
   courses = loadCourses();
   activeRun = loadActiveRun();
 
-  // Au premier lancement, une stratégie complète est disponible immédiatement.
-  if (courses.length === 0) {
-    courses = [createExampleCourse()];
+  // Les modèles sont ajoutés sans modifier les courses déjà présentes.
+  if (ensureDefaultCourseTemplates()) {
     saveCourses();
   }
 
@@ -1568,6 +1567,25 @@ function createBlankCourse() {
   };
 }
 
+function ensureDefaultCourseTemplates() {
+  const templates = [
+    createExampleCourse,
+    createSisterFinishCourse
+  ];
+  let added = false;
+
+  templates.forEach((createTemplate) => {
+    const template = createTemplate();
+    const exists = courses.some((course) => normalizeName(course.name) === normalizeName(template.name));
+    if (!exists) {
+      courses.push(template);
+      added = true;
+    }
+  });
+
+  return added;
+}
+
 function createExampleCourse() {
   const now = new Date().toISOString();
   return {
@@ -1588,6 +1606,30 @@ function createExampleCourse() {
       checkpoint("Ravito 5", 15.8, "01:37:00", "Ravito", "Relance progressive", "Dernier vrai ravito. Bois, mais reste concentré.", 30),
       checkpoint("Ravito 6", 18.5, "01:53:15", "Finish", "Finish au mental", "Une gorgée maximum. Tu repars directement.", 10),
       checkpoint("Arrivée", 19.7, "02:00:00", "Finish", "Finish au mental", "Dernier bloc. Continue jusqu’à la ligne.")
+    ]
+  };
+}
+
+function createSisterFinishCourse() {
+  const now = new Date().toISOString();
+  return {
+    id: uid(),
+    name: "AUT 2026 — Sœur Finish 3h",
+    distanceKm: 19.7,
+    targetSeconds: 10800,
+    type: "Urban Trail",
+    notes: "Plan finisher rapide pour une personne peu préparée. Objectif : finir en 3h maximum. Stratégie basée sur marche rapide majoritaire, petits trots réguliers sur plat ou descente facile, aucune course forcée en montée. Les ravitos doivent rester très courts.",
+    createdAt: now,
+    updatedAt: now,
+    checkpoints: [
+      checkpoint("Départ", 0, "00:00:00", "Départ", "Marche rapide autorisée", "Départ calme. Ne pas se laisser entraîner par le groupe. L’objectif est de tenir jusqu’au bout.", 0),
+      checkpoint("Ravito 1", 4.3, "00:35:00", "Ravito", "Course/marche", "Marche rapide avec petits trots faciles sur les portions plates. Eau rapide, ne pas s’arrêter longtemps.", 20),
+      checkpoint("Ravito 2", 6.7, "00:56:00", "Ravito", "Course/marche", "Rester régulière. Ne pas forcer avant la partie difficile. Trot léger seulement si le souffle est bon.", 20),
+      checkpoint("Ravito 3", 10, "01:31:00", "Zone difficile", "Marche rapide autorisée", "Partie clé. Marcher toutes les montées. Garder des petits pas actifs. Ne pas chercher à courir si la pente casse le souffle.", 40),
+      checkpoint("Ravito 4", 12.5, "01:53:00", "Relance", "Descente contrôlée", "Descente contrôlée. Relancer doucement si les jambes répondent. Ne pas taper fort dans les quadriceps.", 20),
+      checkpoint("Ravito 5", 15.8, "02:23:00", "Ravito", "Course/marche", "Partie mentale. Alterner marche rapide et petits trots de 30 à 60 secondes. Ne pas transformer la marche en balade.", 40),
+      checkpoint("Ravito 6", 18.5, "02:49:00", "Finish", "Finish au mental", "Dernier ravito très court. Une gorgée maximum puis repartir. Garder une marche forte ou un petit trot jusqu’à la fin.", 15),
+      checkpoint("Arrivée", 19.7, "03:00:00", "Finish", "Finish au mental", "Dernier bloc. Ne pas s’arrêter. Continuer jusqu’à la ligne, même lentement.", 0)
     ]
   };
 }
@@ -1731,6 +1773,15 @@ function slug(value) {
     .replace(/[\u0300-\u036f]/g, "")
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-|-$/g, "");
+}
+
+function normalizeName(value) {
+  return String(value || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function uid() {
