@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#111111">
+  <meta name="description" content="Race Split Assistant aide à préparer et suivre une stratégie de course sans GPS.">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Race Splits">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <title>Race Split Assistant</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="app-header">
+    <div>
+      <p class="eyebrow">Race Split Assistant</p>
+      <h1 id="screen-title">Accueil</h1>
+    </div>
+    <nav class="top-nav" aria-label="Navigation principale">
+      <button class="nav-button" type="button" data-route="#home">Accueil</button>
+      <button class="nav-button" type="button" data-action="open-active">Live</button>
+    </nav>
+  </header>
+
+  <main id="app" class="app-shell" tabindex="-1"></main>
+
+  <template id="confirm-template">
+    <div class="modal-backdrop" role="presentation">
+      <section class="modal" role="dialog" aria-modal="true" aria-labelledby="confirm-title">
+        <h2 id="confirm-title">Confirmation</h2>
+        <p id="confirm-message"></p>
+        <div class="actions">
+          <button class="button secondary" type="button" data-confirm="cancel">Annuler</button>
+          <button class="button danger" type="button" data-confirm="ok">Confirmer</button>
+        </div>
+      </section>
+    </div>
+  </template>
+ 
+  <script src="app.js" defer></script>
+</body>
+</html>

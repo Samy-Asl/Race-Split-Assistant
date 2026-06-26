@@ -1,0 +1,25 @@
+{
+  "name": "Race Split Assistant",
+  "short_name": "Race Splits",
+  "description": "Préparer et suivre une stratégie de course sans GPS.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#111111",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'%3E%3Crect width='192' height='192' fill='%23111111'/%3E%3Cpath d='M44 132h104v16H44zM44 44h74c24 0 38 13 38 34 0 18-10 30-28 34l32 36h-31l-29-34H70v34H44zm26 22v27h46c9 0 14-5 14-14s-5-13-14-13z' fill='white'/%3E%3C/svg%3E",
+      "sizes": "192x192",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' fill='%23111111'/%3E%3Cpath d='M118 354h276v42H118zM118 116h197c63 0 101 34 101 90 0 48-27 80-75 90l84 100h-81l-76-91h-80v91h-70zm70 58v72h122c25 0 38-13 38-37 0-23-13-35-38-35z' fill='white'/%3E%3C/svg%3E",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
