@@ -7,11 +7,7 @@ const ASSETS = [
   "./style.css",
   "./app.js",
   "./manifest.json",
-  "./assets/logo.png",
-  "./assets/icon-192.png",
-  "./assets/icon-512.png",
-  "./assets/apple-touch-icon.png",
-  "./assets/favicon.png"
+  "./assets/logo.png"
 ];
 
 self.addEventListener("install", (event) => {

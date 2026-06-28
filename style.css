@@ -147,6 +147,12 @@ h3 {
   background: var(--green);
 }
 
+.button.is-active {
+  border-color: var(--primary);
+  background: var(--primary);
+  color: #ffffff;
+}
+
 .button:disabled {
   cursor: not-allowed;
   opacity: 0.55;
@@ -440,6 +446,71 @@ textarea {
 .split-list {
   display: grid;
   gap: 12px;
+}
+
+.route-editor {
+  gap: 14px;
+}
+
+.route-tools {
+  display: grid;
+  gap: 12px;
+}
+
+.route-canvas-wrap {
+  aspect-ratio: 1 / 1;
+  min-height: 340px;
+  max-height: min(72vh, 720px);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #ffffff;
+  overflow: hidden;
+  touch-action: none;
+}
+
+.route-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: #ffffff;
+  touch-action: none;
+}
+
+.route-segment {
+  vector-effect: non-scaling-stroke;
+  stroke: var(--primary);
+  stroke-width: 3;
+  stroke-linecap: round;
+  fill: none;
+}
+
+.route-segment-curve {
+  stroke: var(--green);
+}
+
+.route-point-group {
+  cursor: grab;
+  touch-action: none;
+}
+
+.route-point-group:active {
+  cursor: grabbing;
+}
+
+.route-point {
+  vector-effect: non-scaling-stroke;
+  fill: #ffffff;
+  stroke: var(--black);
+  stroke-width: 2.6;
+}
+
+.route-point-label {
+  font-size: 4px;
+  font-weight: 850;
+  text-anchor: middle;
+  fill: var(--black);
+  pointer-events: none;
+  user-select: none;
 }
 
 .split-card {

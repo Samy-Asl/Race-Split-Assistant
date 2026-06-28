@@ -200,6 +200,8 @@ function renderRoute() {
     renderSplits(id);
   } else if (screen === "summary" && id) {
     renderSummary(id);
+  } else if (screen === "route" && id) {
+    renderRouteEditor(id);
   } else if (screen === "live") {
     renderLive();
   } else if (screen === "resume") {
@@ -458,6 +460,7 @@ function renderCourseCard(course) {
         <button class="button secondary" type="button" data-action="view-course" data-id="${course.id}">Voir</button>
         <button class="button" type="button" data-action="quick-start" data-id="${course.id}">Lancer</button>
       </div>
+      <button class="button secondary" type="button" data-route="#route/${course.id}">Dessiner le parcours</button>
       <div class="actions two course-actions">
         <button class="button ghost" type="button" data-action="duplicate-course" data-id="${course.id}">Dupliquer</button>
         <button class="button danger" type="button" data-action="delete-course" data-id="${course.id}">Supprimer</button>
@@ -840,6 +843,7 @@ function renderSummary(courseId) {
         <button class="button secondary" type="button" data-route="#splits/${course.id}">Modifier les splits</button>
         <button class="button success primary-live-button" type="button" data-action="start-run">Lancer le mode course</button>
       </div>
+      <button class="button secondary" type="button" data-route="#route/${course.id}">Dessiner le parcours</button>
     </section>
   `;
 
@@ -860,6 +864,182 @@ function renderSummaryCheckpoint(course, checkpoint, index) {
       ${checkpoint.advice ? `<p>${escapeHtml(checkpoint.advice)}</p>` : ""}
     </article>
   `;
+}
+
+function renderRouteEditor(courseId) {
+  const course = findCourse(courseId);
+  if (!course) return navigateHome();
+
+  setTitle("Parcours");
+  course.routeDesign = normalizeRouteDesign(course.routeDesign);
+  let draft = structuredCloneSafe(course.routeDesign);
+  let segmentMode = "line";
+  let draggedPointId = null;
+
+  app.innerHTML = `
+    ${renderScreenNav(course.id)}
+    <section class="stack route-editor">
+      <div class="card">
+        <h2>${escapeHtml(course.name)}</h2>
+        <p class="muted-text">Dessine une base visuelle du parcours. Clique dans la zone pour ajouter des points, puis déplace-les au doigt ou à la souris.</p>
+        <button class="button secondary" type="button" data-route="#summary/${course.id}">Retour vers la course</button>
+      </div>
+      <div class="card route-tools">
+        <div class="actions two">
+          <button class="button" type="button" data-mode="line">Ligne droite</button>
+          <button class="button secondary" type="button" data-mode="curve">Courbe</button>
+        </div>
+        <div class="actions three">
+          <button class="button secondary" type="button" data-action="undo-route-point">Annuler le dernier point</button>
+          <button class="button danger secondary-danger" type="button" data-action="reset-route">Réinitialiser le parcours</button>
+          <button class="button success" type="button" data-action="save-route">Sauvegarder</button>
+        </div>
+        <p id="route-save-status" class="muted-text"></p>
+      </div>
+      <div class="route-canvas-wrap">
+        <svg id="route-canvas" class="route-canvas" viewBox="0 0 100 100" preserveAspectRatio="none" role="img" aria-label="Zone de dessin du parcours"></svg>
+      </div>
+    </section>
+  `;
+
+  const svg = app.querySelector("#route-canvas");
+  const status = app.querySelector("#route-save-status");
+  const modeButtons = Array.from(app.querySelectorAll("[data-mode]"));
+
+  function setMode(mode) {
+    segmentMode = mode;
+    modeButtons.forEach((button) => {
+      const active = button.dataset.mode === mode;
+      button.classList.toggle("is-active", active);
+      button.classList.toggle("secondary", !active);
+    });
+  }
+
+  function renderDraft() {
+    svg.innerHTML = `
+      <defs>
+        <pattern id="route-grid" width="5" height="5" patternUnits="userSpaceOnUse">
+          <path d="M 5 0 L 0 0 0 5" fill="none" stroke="rgba(36,54,75,0.14)" stroke-width="0.22"/>
+        </pattern>
+      </defs>
+      <rect width="100" height="100" fill="url(#route-grid)"></rect>
+      ${draft.segments.map((segment) => renderRouteSegmentSvg(draft, segment)).join("")}
+      ${draft.points.map((point, index) => `
+        <g class="route-point-group" data-point-id="${point.id}">
+          <circle class="route-point" cx="${point.x}" cy="${point.y}" r="1.8"></circle>
+          <text class="route-point-label" x="${point.x}" y="${Math.max(3, point.y - 3)}">${index + 1}</text>
+        </g>
+      `).join("")}
+    `;
+
+    svg.querySelectorAll("[data-point-id]").forEach((node) => {
+      node.addEventListener("pointerdown", (event) => {
+        event.preventDefault();
+        draggedPointId = node.dataset.pointId;
+        svg.setPointerCapture(event.pointerId);
+      });
+    });
+  }
+
+  function addPoint(event) {
+    if (draggedPointId || event.target.closest("[data-point-id]")) return;
+    const position = getSvgPoint(svg, event);
+    const point = {
+      id: uid(),
+      x: position.x,
+      y: position.y
+    };
+    const previous = draft.points[draft.points.length - 1];
+    draft.points.push(point);
+    if (previous) {
+      draft.segments.push(createRouteSegment(previous, point, segmentMode));
+    }
+    status.textContent = "Modifications non sauvegardées.";
+    renderDraft();
+  }
+
+  svg.addEventListener("click", addPoint);
+  svg.addEventListener("pointermove", (event) => {
+    if (!draggedPointId) return;
+    const point = draft.points.find((item) => item.id === draggedPointId);
+    if (!point) return;
+    const position = getSvgPoint(svg, event);
+    point.x = position.x;
+    point.y = position.y;
+    status.textContent = "Modifications non sauvegardées.";
+    renderDraft();
+  });
+  svg.addEventListener("pointerup", () => {
+    draggedPointId = null;
+  });
+  svg.addEventListener("pointercancel", () => {
+    draggedPointId = null;
+  });
+
+  modeButtons.forEach((button) => button.addEventListener("click", () => setMode(button.dataset.mode)));
+  app.querySelector("[data-action='undo-route-point']").addEventListener("click", () => {
+    if (!draft.points.length) return;
+    const removed = draft.points.pop();
+    draft.segments = draft.segments.filter((segment) => segment.from !== removed.id && segment.to !== removed.id);
+    status.textContent = "Dernier point annulé. Pense à sauvegarder.";
+    renderDraft();
+  });
+  app.querySelector("[data-action='reset-route']").addEventListener("click", () => {
+    confirmDialog("Réinitialiser le dessin du parcours ?", () => {
+      draft = createEmptyRouteDesign();
+      status.textContent = "Parcours réinitialisé. Pense à sauvegarder.";
+      renderDraft();
+    });
+  });
+  app.querySelector("[data-action='save-route']").addEventListener("click", () => {
+    course.routeDesign = normalizeRouteDesign(draft);
+    course.updatedAt = new Date().toISOString();
+    saveCourses();
+    draft = structuredCloneSafe(course.routeDesign);
+    status.textContent = "Parcours sauvegardé.";
+    renderDraft();
+  });
+
+  setMode(segmentMode);
+  renderDraft();
+}
+
+function renderRouteSegmentSvg(routeDesign, segment) {
+  const from = routeDesign.points.find((point) => point.id === segment.from);
+  const to = routeDesign.points.find((point) => point.id === segment.to);
+  if (!from || !to) return "";
+
+  if (segment.shape === "curve") {
+    return `<path class="route-segment route-segment-curve" d="M ${from.x} ${from.y} Q ${segment.controlX} ${segment.controlY} ${to.x} ${to.y}"></path>`;
+  }
+
+  return `<line class="route-segment" x1="${from.x}" y1="${from.y}" x2="${to.x}" y2="${to.y}"></line>`;
+}
+
+function createRouteSegment(from, to, shape) {
+  const segment = {
+    id: uid(),
+    from: from.id,
+    to: to.id,
+    shape: shape === "curve" ? "curve" : "line",
+    controlX: null,
+    controlY: null
+  };
+
+  if (segment.shape === "curve") {
+    segment.controlX = clampRouteCoord((from.x + to.x) / 2);
+    segment.controlY = clampRouteCoord(((from.y + to.y) / 2) - 10);
+  }
+
+  return segment;
+}
+
+function getSvgPoint(svg, event) {
+  const rect = svg.getBoundingClientRect();
+  return {
+    x: clampRouteCoord(((event.clientX - rect.left) / rect.width) * 100),
+    y: clampRouteCoord(((event.clientY - rect.top) / rect.height) * 100)
+  };
 }
 
 function startRun(courseId) {
@@ -1287,7 +1467,8 @@ function renderScreenNav(courseId = null) {
     items.push(
       { label: "Course", route: `#course/${courseId}/edit` },
       { label: "Splits", route: `#splits/${courseId}` },
-      { label: "Résumé", route: `#summary/${courseId}` }
+      { label: "Résumé", route: `#summary/${courseId}` },
+      { label: "Parcours", route: `#route/${courseId}` }
     );
   }
 
@@ -1733,6 +1914,7 @@ function createBlankCourse() {
     type: "Route",
     notes: "",
     checkpoints: [],
+    routeDesign: createEmptyRouteDesign(),
     createdAt: "",
     updatedAt: ""
   };
@@ -1768,6 +1950,7 @@ function createExampleCourse() {
     notes: "Course sans GPS, gestion manuelle aux ravitos et checkpoints.",
     createdAt: now,
     updatedAt: now,
+    routeDesign: createEmptyRouteDesign(),
     checkpoints: [
       checkpoint("Départ", 0, "00:00:00", "Départ", "Course continue", "Départ calme. Ne gaspille pas d’énergie."),
       checkpoint("Ravito 1", 4.3, "00:25:15", "Ravito", "Course continue", "Eau rapide. Ne t’éternise pas.", 15),
@@ -1792,6 +1975,7 @@ function createSisterFinishCourse() {
     notes: "Plan finisher rapide pour une personne peu préparée. Objectif : finir en 3h maximum. Stratégie basée sur marche rapide majoritaire, petits trots réguliers sur plat ou descente facile, aucune course forcée en montée. Les ravitos doivent rester très courts.",
     createdAt: now,
     updatedAt: now,
+    routeDesign: createEmptyRouteDesign(),
     checkpoints: [
       checkpoint("Départ", 0, "00:00:00", "Départ", "Marche rapide autorisée", "Départ calme. Ne pas se laisser entraîner par le groupe. L’objectif est de tenir jusqu’au bout.", 0),
       checkpoint("Ravito 1", 4.3, "00:35:00", "Ravito", "Course/marche", "Marche rapide avec petits trots faciles sur les portions plates. Eau rapide, ne pas s’arrêter longtemps.", 20),
@@ -1818,6 +2002,63 @@ function checkpoint(name, distanceKm, targetTime, zoneType, strategy, advice, ai
   };
 }
 
+function createEmptyRouteDesign() {
+  return {
+    points: [],
+    segments: []
+  };
+}
+
+function normalizeRouteDesign(routeDesign) {
+  if (!routeDesign || typeof routeDesign !== "object") return createEmptyRouteDesign();
+
+  const points = Array.isArray(routeDesign.points)
+    ? routeDesign.points.map(normalizeRoutePoint).filter(Boolean)
+    : [];
+  const pointIds = new Set(points.map((point) => point.id));
+  const segments = Array.isArray(routeDesign.segments)
+    ? routeDesign.segments.map((segment) => normalizeRouteSegment(segment, pointIds)).filter(Boolean)
+    : [];
+
+  return { points, segments };
+}
+
+function normalizeRoutePoint(point) {
+  if (!point || typeof point !== "object") return null;
+  const x = Number(point.x);
+  const y = Number(point.y);
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+  return {
+    id: point.id || uid(),
+    x: clampRouteCoord(x),
+    y: clampRouteCoord(y)
+  };
+}
+
+function normalizeRouteSegment(segment, pointIds) {
+  if (!segment || typeof segment !== "object") return null;
+  if (!pointIds.has(segment.from) || !pointIds.has(segment.to)) return null;
+  const shape = segment.shape === "curve" ? "curve" : "line";
+  const normalized = {
+    id: segment.id || uid(),
+    from: segment.from,
+    to: segment.to,
+    shape,
+    controlX: null,
+    controlY: null
+  };
+  if (shape === "curve") {
+    normalized.controlX = clampRouteCoord(Number(segment.controlX));
+    normalized.controlY = clampRouteCoord(Number(segment.controlY));
+  }
+  return normalized;
+}
+
+function clampRouteCoord(value) {
+  if (!Number.isFinite(value)) return 50;
+  return Math.min(100, Math.max(0, Math.round(value * 1000) / 1000));
+}
+
 function normalizeCourse(course) {
   if (!course || typeof course !== "object") return null;
   const targetSeconds = Number(course.targetSeconds);
@@ -1832,6 +2073,7 @@ function normalizeCourse(course) {
     type: course.type || "Autre",
     notes: course.notes || "",
     checkpoints: Array.isArray(course.checkpoints) ? course.checkpoints.map(normalizeCheckpoint).filter(Boolean).sort(sortByDistance) : [],
+    routeDesign: normalizeRouteDesign(course.routeDesign),
     createdAt: course.createdAt || new Date().toISOString(),
     updatedAt: new Date().toISOString()
   };
