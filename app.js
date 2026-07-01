@@ -251,11 +251,9 @@ function renderHome() {
           </div>
         </div>
         <p>Crée ta course, dessine ton parcours et organise tes temps de passage avant le départ.</p>
-        <div class="actions two hero-actions">
+        <div class="actions hero-actions">
           <button class="button" type="button" data-route="#course/new">${hasCourses ? "Nouvelle course" : "Créer une course"}</button>
-          <label class="button secondary" for="import-json">Importer</label>
         </div>
-        <input class="sr-only" id="import-json" type="file" accept="application/json">
       </div>
       ${renderHomeSteps()}
       ${activeRun && activeRun.status !== "finished" ? `
@@ -283,14 +281,13 @@ function renderHome() {
           </div>
         `}
       </section>
-      <div class="toolbar utility-toolbar">
-        <button class="button secondary" type="button" data-action="export">Exporter JSON</button>
-      </div>
     </section>
   `;
 
-  app.querySelector("[data-action='export']").addEventListener("click", exportCourses);
-  app.querySelector("#import-json").addEventListener("change", importCourses);
+  const exportButton = app.querySelector("[data-action='export']");
+  if (exportButton) exportButton.addEventListener("click", exportCourses);
+  const importInput = app.querySelector("#import-json");
+  if (importInput) importInput.addEventListener("change", importCourses);
   const installButton = app.querySelector("[data-action='install-app']");
   if (installButton) installButton.addEventListener("click", installApp);
 
@@ -585,10 +582,10 @@ function renderCourseForm(courseId = null) {
         <div id="form-errors"></div>
         <div class="form-intro">
           <p class="section-kicker">${editing ? "Modifier" : "Assistant"}</p>
-          <h2>${editing ? "Ajuster la course" : "Créer une course en 3 étapes"}</h2>
+          <h2>${editing ? "Ajuster la course" : "Créer une course en 4 étapes"}</h2>
           <p>${editing ? "Modifie les informations principales sans toucher aux parcours ou temps de passage déjà préparés." : "Renseigne l’essentiel, puis choisis si tu veux dessiner le parcours maintenant ou plus tard."}</p>
         </div>
-        <div class="form-section">
+        <div class="form-section section-course">
           <div>
             <p class="section-kicker">Étape 1</p>
             <h2>Informations principales</h2>
@@ -606,7 +603,7 @@ function renderCourseForm(courseId = null) {
           </div>
         </div>
 
-        <div class="form-section">
+        <div class="form-section section-objective">
           <div>
             <p class="section-kicker">Étape 2</p>
             <h2>Objectif chrono</h2>
@@ -614,7 +611,7 @@ function renderCourseForm(courseId = null) {
           ${renderDurationPicker("target", course.targetSeconds, "Objectif")}
         </div>
 
-        <div class="form-section">
+        <div class="form-section section-course">
           <div>
             <p class="section-kicker">Détails</p>
             <h2>Contexte de course</h2>
@@ -630,7 +627,7 @@ function renderCourseForm(courseId = null) {
         </div>
 
         ${editing ? "" : `
-          <div class="form-section">
+          <div class="form-section section-route">
             <div>
               <p class="section-kicker">Étape 3</p>
               <h2>Parcours</h2>
@@ -649,6 +646,29 @@ function renderCourseForm(courseId = null) {
                 <span>
                   <strong>Maintenant</strong>
                   <small>Créer la course puis ouvrir directement l’éditeur de parcours.</small>
+                </span>
+              </label>
+            </div>
+          </div>
+          <div class="form-section section-splits">
+            <div>
+              <p class="section-kicker">Étape 4</p>
+              <h2>Temps de passage</h2>
+              <p class="muted-text">Veux-tu préparer tes checkpoints tout de suite ?</p>
+            </div>
+            <div class="choice-grid">
+              <label class="choice-card choice-card-splits">
+                <input type="radio" name="splitTiming" value="later" checked>
+                <span>
+                  <strong>Préparer plus tard</strong>
+                  <small>Créer la course puis revenir aux temps de passage depuis le tableau de bord.</small>
+                </span>
+              </label>
+              <label class="choice-card choice-card-splits">
+                <input type="radio" name="splitTiming" value="now">
+                <span>
+                  <strong>Préparer maintenant</strong>
+                  <small>Créer la course puis ouvrir directement l’interface des temps de passage.</small>
                 </span>
               </label>
             </div>
@@ -697,6 +717,7 @@ function saveCourseFromForm(courseId) {
   const type = String(formData.get("type") || "Autre");
   const notes = String(formData.get("notes") || "").trim();
   const routeTiming = String(formData.get("routeTiming") || "later");
+  const splitTiming = String(formData.get("splitTiming") || "later");
 
   const errors = [];
   if (!name) errors.push("Le nom est obligatoire.");
@@ -728,7 +749,13 @@ function saveCourseFromForm(courseId) {
 
   saveCourses();
   showToast(courseId ? "Course mise à jour" : "Course créée", "success");
-  location.hash = !courseId && routeTiming === "now" ? `#route/${course.id}` : `#summary/${course.id}`;
+  if (!courseId && splitTiming === "now") {
+    location.hash = `#splits/${course.id}`;
+  } else if (!courseId && routeTiming === "now") {
+    location.hash = `#route/${course.id}`;
+  } else {
+    location.hash = `#summary/${course.id}`;
+  }
 }
 
 function renderSplits(courseId) {
@@ -739,27 +766,41 @@ function renderSplits(courseId) {
   course.checkpoints.sort(sortByDistance);
   const metrics = calculateCourseMetrics(course);
   const alert = getLastCheckpointAlert(course);
-  const importantZones = course.checkpoints.filter((checkpoint) => ["Ravito", "Zone difficile", "Finish"].includes(checkpoint.zoneType));
 
   app.innerHTML = `
     ${renderScreenNav(course.id)}
-    <section class="stack">
-      <div class="card">
-        <h2>${escapeHtml(course.name)}</h2>
+    <section class="stack checkpoints-screen">
+      <div class="card split-hero section-splits">
+        <div>
+          <p class="section-kicker">Temps de passage</p>
+          <h2>${escapeHtml(course.name)}</h2>
+          <p class="muted-text">Ajoute les points importants de ta course : ravitos, grosses montées, changements de rythme ou repères personnels.</p>
+        </div>
         <div class="meta-grid">
           <div class="metric"><span>Distance totale</span><strong>${formatKm(course.distanceKm)}</strong></div>
           <div class="metric"><span>Objectif</span><strong>${formatTime(course.targetSeconds)}</strong></div>
           <div class="metric"><span>Allure moyenne</span><strong>${formatPace(metrics.globalPace)}</strong></div>
-          <div class="metric"><span>Ravitos prévus</span><strong>${formatShortDuration(metrics.totalAidSeconds)}</strong></div>
           <div class="metric"><span>Temps de passage</span><strong>${course.checkpoints.length}</strong></div>
         </div>
         <button class="button add-checkpoint-button" type="button" data-action="focus-checkpoint-form">Ajouter un temps de passage</button>
       </div>
+      ${renderCheckpointPlanningContext(course)}
+      ${renderCheckpointProgressBars(course)}
       ${alert ? `<div class="notice warning">${escapeHtml(alert)}</div>` : ""}
       <div class="card checkpoint-editor is-hidden" id="checkpoint-editor"></div>
-      <div class="split-list">
-        ${course.checkpoints.length ? course.checkpoints.map((checkpoint, index) => renderSplitCard(course, checkpoint, index)).join("") : `<div class="empty">Aucun temps de passage pour cette course.</div>`}
-      </div>
+      <section class="split-list-section">
+        <div class="section-title">
+          <div>
+            <p class="section-kicker">Plan actuel</p>
+            <h2>Checkpoints</h2>
+          </div>
+          <span class="tag status-splits">${course.checkpoints.length} point${course.checkpoints.length > 1 ? "s" : ""}</span>
+        </div>
+        <div class="split-list">
+          ${course.checkpoints.length ? course.checkpoints.map((checkpoint, index) => renderSplitCard(course, checkpoint, index)).join("") : `<div class="empty">Aucun temps de passage pour cette course. Commence par ajouter le départ, un ravito ou un repère important.</div>`}
+        </div>
+      </section>
+      ${renderCheckpointPlanSummary(course)}
       <div class="actions two">
         <button class="button secondary" type="button" data-route="#course/${course.id}/edit">Modifier la course</button>
         <button class="button" type="button" data-route="#summary/${course.id}">Voir le résumé</button>
@@ -781,6 +822,100 @@ function renderSplits(courseId) {
 
 }
 
+function getCheckpointPlanState(course) {
+  const ordered = [...course.checkpoints].sort(sortByDistance);
+  const last = ordered[ordered.length - 1] || null;
+  const coveredDistance = last ? last.distanceKm : 0;
+  const plannedSeconds = last ? last.targetSeconds : 0;
+  return {
+    ordered,
+    last,
+    coveredDistance,
+    remainingDistance: Math.max(0, course.distanceKm - coveredDistance),
+    plannedSeconds,
+    remainingSeconds: course.targetSeconds - plannedSeconds
+  };
+}
+
+function renderCheckpointPlanningContext(course) {
+  const state = getCheckpointPlanState(course);
+  return `
+    <section class="card checkpoint-context section-splits">
+      <div class="section-title compact-title">
+        <div>
+          <p class="section-kicker">Où en est le plan ?</p>
+          <h2>Contexte de progression</h2>
+        </div>
+      </div>
+      <div class="meta-grid">
+        <div class="metric"><span>Distance totale</span><strong>${formatKm(course.distanceKm)}</strong></div>
+        <div class="metric"><span>Objectif chrono</span><strong>${formatTime(course.targetSeconds)}</strong></div>
+        <div class="metric"><span>Dernier point</span><strong>${state.last ? escapeHtml(state.last.name) : "Aucun"}</strong></div>
+        <div class="metric"><span>Déjà couvert</span><strong>${formatKm(state.coveredDistance)}</strong></div>
+        <div class="metric"><span>Encore à parcourir</span><strong>${formatKm(state.remainingDistance)}</strong></div>
+        <div class="metric"><span>Temps planifié</span><strong>${formatTime(state.plannedSeconds)}</strong></div>
+        <div class="metric"><span>Temps restant</span><strong>${formatSignedRemaining(state.remainingSeconds)}</strong></div>
+        <div class="metric"><span>Checkpoints créés</span><strong>${course.checkpoints.length}</strong></div>
+      </div>
+      ${state.remainingDistance > 0.01 ? `<p class="context-hint">Il reste encore ${formatKm(state.remainingDistance)} à planifier.</p>` : `<p class="context-hint is-complete">La distance de course est couverte par tes checkpoints.</p>`}
+    </section>
+  `;
+}
+
+function renderCheckpointProgressBars(course) {
+  const ordered = [...course.checkpoints].sort(sortByDistance);
+  return `
+    <section class="card checkpoint-bars section-splits">
+      <div class="section-title compact-title">
+        <div>
+          <p class="section-kicker">Visualisation</p>
+          <h2>Distance et temps</h2>
+        </div>
+      </div>
+      ${renderPlanBar("Distance", "0 km", formatKm(course.distanceKm), ordered, (checkpoint) => checkpoint.distanceKm / course.distanceKm)}
+      ${renderPlanBar("Temps", "00:00:00", formatTime(course.targetSeconds), ordered, (checkpoint) => checkpoint.targetSeconds / course.targetSeconds)}
+    </section>
+  `;
+}
+
+function renderPlanBar(label, startLabel, endLabel, checkpoints, getRatio) {
+  return `
+    <div class="plan-bar-group">
+      <div class="plan-bar-label">
+        <strong>${escapeHtml(label)}</strong>
+        <span>${escapeHtml(startLabel)} → ${escapeHtml(endLabel)}</span>
+      </div>
+      <div class="plan-bar-track">
+        ${checkpoints.map((checkpoint, index) => {
+          const left = clampPercent(getRatio(checkpoint) * 100);
+          return `<span class="plan-marker" style="left: ${left}%" title="${escapeAttr(`${index + 1}. ${checkpoint.name}`)}"></span>`;
+        }).join("")}
+      </div>
+    </div>
+  `;
+}
+
+function renderCheckpointPlanSummary(course) {
+  const state = getCheckpointPlanState(course);
+  const metrics = calculateCourseMetrics(course);
+  return `
+    <section class="card plan-summary section-splits">
+      <div>
+        <p class="section-kicker">Résumé automatique</p>
+        <h2>Plan actuel</h2>
+      </div>
+      <div class="meta-grid">
+        <div class="metric"><span>Distance planifiée</span><strong>${formatKm(state.coveredDistance)} / ${formatKm(course.distanceKm)}</strong></div>
+        <div class="metric"><span>Distance restante</span><strong>${formatKm(state.remainingDistance)}</strong></div>
+        <div class="metric"><span>Temps utilisé</span><strong>${formatTime(state.plannedSeconds)} / ${formatTime(course.targetSeconds)}</strong></div>
+        <div class="metric"><span>Temps restant</span><strong>${formatSignedRemaining(state.remainingSeconds)}</strong></div>
+        <div class="metric"><span>Allure cible globale</span><strong>${formatPace(metrics.globalPace)}</strong></div>
+        <div class="metric"><span>Nombre de checkpoints</span><strong>${course.checkpoints.length}</strong></div>
+      </div>
+    </section>
+  `;
+}
+
 function renderCheckpointForm(course, checkpoint = null) {
   const item = checkpoint || {
     id: "",
@@ -797,24 +932,30 @@ function renderCheckpointForm(course, checkpoint = null) {
     <form class="form" id="checkpoint-form" novalidate>
       <input type="hidden" name="checkpointId" id="checkpointId" value="${escapeAttr(item.id)}">
       <div id="form-errors"></div>
+      <div class="form-intro split-form-intro">
+        <p class="section-kicker">${checkpoint ? "Modification" : "Nouveau point"}</p>
+        <h2>${checkpoint ? "Modifier ce temps de passage" : "Ajouter un temps de passage"}</h2>
+        <p>La distance correspond à la position du point depuis le départ. Le temps cible correspond au chrono que tu veux afficher en arrivant à ce point.</p>
+      </div>
       <div class="grid two">
         <div class="field">
-          <label for="checkpointName">Nom du temps de passage</label>
+          <label for="checkpointName">Nom du point</label>
           <input id="checkpointName" name="checkpointName" required value="${escapeAttr(item.name)}">
         </div>
         <div class="field">
-          <label for="checkpointDistance">Distance cumulée</label>
+          <label for="checkpointDistance">Distance depuis le départ</label>
           <input id="checkpointDistance" name="checkpointDistance" inputmode="decimal" required value="${escapeAttr(item.distanceKm)}">
-          <small>Distance depuis le départ.</small>
+          <small>Exemple : 8.5 pour un point situé à 8,5 km du départ.</small>
         </div>
       </div>
       <div class="form-section compact">
         <div>
-          <h3>Temps cible cumulé</h3>
+          <h3>Temps cible à ce point</h3>
           <p class="muted-text">Chrono prévu à ce point de passage.</p>
         </div>
         ${renderDurationPicker("checkpointTarget", item.targetSeconds, "Temps cible")}
       </div>
+      <div class="checkpoint-preview" id="checkpoint-preview"></div>
       <div class="grid two">
         <div class="field">
           <label for="zoneType">Type de zone</label>
@@ -830,7 +971,7 @@ function renderCheckpointForm(course, checkpoint = null) {
         <input id="aidSeconds" name="aidSeconds" inputmode="numeric" value="${escapeAttr(item.aidSeconds || "")}">
       </div>
       <div class="field">
-        <label for="advice">Conseil personnel</label>
+        <label for="advice">Note optionnelle</label>
         <textarea id="advice" name="advice">${escapeHtml(item.advice || "")}</textarea>
       </div>
       <div class="actions two">
@@ -880,11 +1021,18 @@ function saveCheckpointFromForm(courseId) {
     aidSeconds
   };
 
+  const draftMessages = getCheckpointDraftMessages(course, { checkpointId, distanceKm, targetSeconds });
+  draftMessages
+    .filter((message) => message.level === "danger")
+    .forEach((message) => errors.push(message.text));
+
   const otherCheckpoints = course.checkpoints.filter((item) => item.id !== checkpointId);
   const ordered = [...otherCheckpoints, candidate].sort(sortByDistance);
   // Les splits sont calculés sur l’ordre de distance : il doit rester strict.
   const orderErrors = validateCheckpointOrder(ordered);
-  errors.push(...orderErrors);
+  orderErrors.forEach((error) => {
+    if (!errors.includes(error)) errors.push(error);
+  });
 
   if (errors.length) {
     showErrors(errors);
@@ -913,7 +1061,7 @@ function showCheckpointForm(course, checkpointId = null) {
   if (!card) return;
 
   card.classList.remove("is-hidden");
-  card.innerHTML = `<h2>${checkpoint ? "Modifier un temps de passage" : "Ajouter un temps de passage"}</h2>${renderCheckpointForm(course, checkpoint)}`;
+  card.innerHTML = renderCheckpointForm(course, checkpoint);
   card.querySelector("#checkpoint-form").addEventListener("submit", (event) => {
     event.preventDefault();
     saveCheckpointFromForm(course.id);
@@ -921,6 +1069,7 @@ function showCheckpointForm(course, checkpointId = null) {
   card.querySelector("[data-action='clear-checkpoint']").addEventListener("click", () => hideCheckpointForm(course.id));
   card.querySelector("#zoneType").addEventListener("change", toggleAidField);
   bindDurationPicker("checkpointTarget", "Temps cible");
+  bindCheckpointPreview(course);
   toggleAidField();
   card.scrollIntoView({ behavior: "smooth", block: "start" });
   card.querySelector("#checkpointName").focus();
@@ -934,32 +1083,144 @@ function hideCheckpointForm(courseId) {
   card.innerHTML = "";
 }
 
+function bindCheckpointPreview(course) {
+  const form = app.querySelector("#checkpoint-form");
+  const preview = app.querySelector("#checkpoint-preview");
+  if (!form || !preview) return;
+
+  const update = () => {
+    preview.innerHTML = renderCheckpointPreview(course, readCheckpointDraft(form));
+  };
+
+  form.querySelectorAll("input, select, textarea").forEach((field) => {
+    field.addEventListener("input", update);
+    field.addEventListener("change", update);
+  });
+  update();
+}
+
+function readCheckpointDraft(form) {
+  const formData = new FormData(form);
+  return {
+    checkpointId: String(formData.get("checkpointId") || ""),
+    distanceKm: parseDecimal(formData.get("checkpointDistance")),
+    targetSeconds: readDurationFromForm(formData, "checkpointTarget")
+  };
+}
+
+function renderCheckpointPreview(course, draft) {
+  const previous = getPreviousCheckpointForDraft(course, draft);
+  const previousDistance = previous ? previous.distanceKm : 0;
+  const previousSeconds = previous ? previous.targetSeconds : 0;
+  const hasDistance = Number.isFinite(draft.distanceKm);
+  const hasTime = Number.isFinite(draft.targetSeconds);
+  const segmentDistance = hasDistance ? draft.distanceKm - previousDistance : null;
+  const segmentSeconds = hasTime ? draft.targetSeconds - previousSeconds : null;
+  const remainingDistance = hasDistance ? course.distanceKm - draft.distanceKm : null;
+  const remainingSeconds = hasTime ? course.targetSeconds - draft.targetSeconds : null;
+  const warnings = getCheckpointDraftMessages(course, draft, previous);
+
+  return `
+    <div class="preview-header">
+      <div>
+        <p class="section-kicker">Aperçu automatique</p>
+        <h3>Portion définie</h3>
+      </div>
+      <span class="tag ${warnings.some((item) => item.level === "danger") ? "status-danger" : warnings.length ? "status-warning" : "status-good"}">${warnings.length ? "À vérifier" : "Cohérent"}</span>
+    </div>
+    <div class="meta-grid">
+      <div class="metric"><span>Depuis le point précédent</span><strong>${previous ? escapeHtml(previous.name) : "Départ de course"}</strong></div>
+      <div class="metric"><span>Segment</span><strong>${Number.isFinite(segmentDistance) ? formatKm(Math.max(0, segmentDistance)) : "N/A"}</strong></div>
+      <div class="metric"><span>Temps segment</span><strong>${Number.isFinite(segmentSeconds) ? formatTime(Math.max(0, segmentSeconds)) : "N/A"}</strong></div>
+      <div class="metric"><span>Allure segment</span><strong>${Number.isFinite(segmentDistance) && Number.isFinite(segmentSeconds) && segmentDistance > 0 ? formatPace(segmentSeconds / segmentDistance) : "N/A"}</strong></div>
+      <div class="metric"><span>Distance restante</span><strong>${Number.isFinite(remainingDistance) ? formatKm(Math.max(0, remainingDistance)) : "N/A"}</strong></div>
+      <div class="metric"><span>Temps restant</span><strong>${Number.isFinite(remainingSeconds) ? formatSignedRemaining(remainingSeconds) : "N/A"}</strong></div>
+    </div>
+    <div class="checkpoint-messages">
+      ${warnings.length ? warnings.map((item) => `<p class="inline-message ${item.level}">${escapeHtml(item.text)}</p>`).join("") : `<p class="inline-message good">Ce temps de passage est cohérent avec le plan actuel.</p>`}
+    </div>
+  `;
+}
+
+function getPreviousCheckpointForDraft(course, draft) {
+  const others = course.checkpoints
+    .filter((checkpoint) => checkpoint.id !== draft.checkpointId)
+    .sort(sortByDistance);
+  if (!others.length) return null;
+  if (!draft.checkpointId) return others[others.length - 1];
+  if (!Number.isFinite(draft.distanceKm)) return others[others.length - 1];
+  return [...others].reverse().find((checkpoint) => checkpoint.distanceKm < draft.distanceKm) || null;
+}
+
+function getNextCheckpointForDraft(course, draft) {
+  if (!draft.checkpointId || !Number.isFinite(draft.distanceKm)) return null;
+  return course.checkpoints
+    .filter((checkpoint) => checkpoint.id !== draft.checkpointId)
+    .sort(sortByDistance)
+    .find((checkpoint) => checkpoint.distanceKm > draft.distanceKm) || null;
+}
+
+function getCheckpointDraftMessages(course, draft, previous = getPreviousCheckpointForDraft(course, draft)) {
+  const messages = [];
+  const next = getNextCheckpointForDraft(course, draft);
+
+  if (!Number.isFinite(draft.distanceKm)) {
+    messages.push({ level: "danger", text: "La distance doit être renseignée." });
+    return messages;
+  }
+  if (draft.distanceKm < 0) messages.push({ level: "danger", text: "La distance ne peut pas être négative." });
+  if (draft.distanceKm > course.distanceKm + 0.001) messages.push({ level: "danger", text: "Ce checkpoint dépasse la distance totale." });
+  if (previous && draft.distanceKm <= previous.distanceKm) messages.push({ level: "danger", text: "La distance doit être supérieure au checkpoint précédent." });
+  if (next && draft.distanceKm >= next.distanceKm) messages.push({ level: "danger", text: "La distance doit rester avant le checkpoint suivant." });
+
+  if (!Number.isFinite(draft.targetSeconds)) {
+    messages.push({ level: "danger", text: "Le temps cible doit être renseigné." });
+    return messages;
+  }
+  if (previous && draft.targetSeconds <= previous.targetSeconds) messages.push({ level: "danger", text: "Le temps cible doit être supérieur au temps précédent." });
+  if (next && draft.targetSeconds >= next.targetSeconds) messages.push({ level: "danger", text: "Le temps cible doit rester avant le checkpoint suivant." });
+  if (draft.targetSeconds > course.targetSeconds) messages.push({ level: "warning", text: "Ce checkpoint dépasse l’objectif chrono." });
+
+  const remainingDistance = course.distanceKm - draft.distanceKm;
+  if (remainingDistance > 0.01) messages.push({ level: "info", text: `Il reste encore ${formatKm(remainingDistance)} à planifier.` });
+  return messages;
+}
+
 function renderSplitCard(course, checkpoint, index) {
   const previous = course.checkpoints[index - 1] || null;
   const split = calculateSplit(previous, checkpoint);
   const zoneClass = `zone-${slug(checkpoint.zoneType)}`;
+  const remainingDistance = Math.max(0, course.distanceKm - checkpoint.distanceKm);
+  const remainingSeconds = course.targetSeconds - checkpoint.targetSeconds;
 
   return `
-    <article class="card split-card ${zoneClass}">
+    <article class="card split-card checkpoint-row ${zoneClass}">
       <div class="card-header">
-        <div>
-          <h3>${escapeHtml(checkpoint.name)}</h3>
-          <div class="tag-row">
-            <span class="tag">${formatKm(checkpoint.distanceKm)}</span>
-            <span class="tag">${formatTime(checkpoint.targetSeconds)}</span>
-            <span class="tag ${zoneTagClass(checkpoint.zoneType)}">${escapeHtml(checkpoint.zoneType)}</span>
+        <div class="checkpoint-title">
+          <span class="checkpoint-number">${index + 1}</span>
+          <div>
+            <h3>${escapeHtml(checkpoint.name)}</h3>
+            <p>${formatKm(checkpoint.distanceKm)} · ${formatTime(checkpoint.targetSeconds)}</p>
           </div>
         </div>
+        <div class="tag-row">
+          <span class="tag ${zoneTagClass(checkpoint.zoneType)}">${escapeHtml(checkpoint.zoneType)}</span>
+        </div>
+      </div>
+      <div class="checkpoint-segment">
+        <p>
+          <strong>Segment précédent :</strong>
+          ${formatKm(split.distanceKm)} en ${formatTime(split.seconds)} · ${formatPace(split.pace)}
+        </p>
+        <p>Encore ${formatKm(remainingDistance)} à parcourir · ${formatSignedRemaining(remainingSeconds)} avant l’objectif.</p>
       </div>
       <div class="meta-grid">
-        <div class="metric"><span>Distance cumulée</span><strong>${formatKm(checkpoint.distanceKm)}</strong></div>
+        <div class="metric"><span>Distance depuis départ</span><strong>${formatKm(checkpoint.distanceKm)}</strong></div>
         <div class="metric"><span>Temps cible</span><strong>${formatTime(checkpoint.targetSeconds)}</strong></div>
-        <div class="metric"><span>Distance du split</span><strong>${formatKm(split.distanceKm)}</strong></div>
-        <div class="metric"><span>Temps split</span><strong>${formatTime(split.seconds)}</strong></div>
-        <div class="metric"><span>Allure split</span><strong>${formatPace(split.pace)}</strong></div>
-        <div class="metric"><span>Stratégie</span><strong>${escapeHtml(checkpoint.strategy)}</strong></div>
+        <div class="metric"><span>Allure segment</span><strong>${formatPace(split.pace)}</strong></div>
+        <div class="metric"><span>Distance restante</span><strong>${formatKm(remainingDistance)}</strong></div>
       </div>
-      ${checkpoint.advice ? `<p>${escapeHtml(checkpoint.advice)}</p>` : ""}
+      ${checkpoint.advice ? `<p class="checkpoint-note">${escapeHtml(checkpoint.advice)}</p>` : ""}
       ${checkpoint.aidSeconds ? `<p class="tag yellow">Ravito max ${checkpoint.aidSeconds} s</p>` : ""}
       <div class="actions two">
         <button class="button secondary" type="button" data-action="edit-checkpoint" data-id="${checkpoint.id}">Modifier</button>
@@ -2245,6 +2506,12 @@ function formatShortDuration(seconds) {
   return minutes ? `${minutes} min ${secs} s` : `${secs} s`;
 }
 
+function formatSignedRemaining(seconds) {
+  const safe = Math.round(Number(seconds) || 0);
+  if (safe < 0) return `Dépassé de ${formatTime(Math.abs(safe))}`;
+  return formatTime(safe);
+}
+
 function formatDurationLabel(seconds) {
   const parts = secondsToParts(seconds);
   return `${parts.hours}h ${String(parts.minutes).padStart(2, "0")}min ${String(parts.seconds).padStart(2, "0")}s`;
@@ -2266,6 +2533,11 @@ function formatRemainingTime(seconds) {
   const safe = Math.round(Number(seconds) || 0);
   if (safe < 0) return `Objectif dépassé de ${formatTime(Math.abs(safe))}`;
   return formatTime(safe);
+}
+
+function clampPercent(value) {
+  if (!Number.isFinite(value)) return 0;
+  return Math.min(100, Math.max(0, Math.round(value * 100) / 100));
 }
 
 function formatDiff(seconds) {

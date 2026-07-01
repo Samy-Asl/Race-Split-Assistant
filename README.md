@@ -120,12 +120,7 @@ Les temps de passage sont triés par distance. Les distances et temps cibles doi
 
 ## Exporter et importer
 
-Depuis l’accueil :
-
-- `Exporter JSON` télécharge toutes les courses ;
-- `Importer` ajoute les courses depuis un fichier JSON.
-
-L’import valide la structure et ne supprime pas les courses existantes.
+Les fonctions JSON existent dans le code pour la sauvegarde technique, mais les boutons d’import/export sont masqués dans l’interface de cette version.
 
 ## Installation PWA
 
