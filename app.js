@@ -37,6 +37,7 @@ let deferredInstallPrompt = null;
 let serviceWorkerRegistration = null;
 let waitingServiceWorker = null;
 let reloadingForUpdate = false;
+let routeEditorDirty = false;
 
 const app = document.querySelector("#app");
 const screenTitle = document.querySelector("#screen-title");
@@ -52,6 +53,11 @@ window.addEventListener("appinstalled", () => {
   deferredInstallPrompt = null;
   if ((location.hash || "#home") === "#home") renderHome();
 });
+window.addEventListener("beforeunload", (event) => {
+  if (!routeEditorDirty) return;
+  event.preventDefault();
+  event.returnValue = "";
+});
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "visible" && location.hash === "#live") {
     requestWakeLock();
@@ -61,11 +67,6 @@ document.addEventListener("visibilitychange", () => {
 function init() {
   courses = loadCourses();
   activeRun = loadActiveRun();
-
-  // Les modèles sont ajoutés sans modifier les courses déjà présentes.
-  if (ensureDefaultCourseTemplates()) {
-    saveCourses();
-  }
 
   bindGlobalActions();
   registerServiceWorker();
@@ -87,6 +88,13 @@ function bindGlobalActions() {
   document.body.addEventListener("click", (event) => {
     const routeButton = event.target.closest("[data-route]");
     if (routeButton) {
+      if (shouldConfirmRouteLeave(routeButton.dataset.route)) {
+        confirmDialog("Quitter sans sauvegarder le parcours ?", () => {
+          routeEditorDirty = false;
+          location.hash = routeButton.dataset.route;
+        });
+        return;
+      }
       if (location.hash === "#live" && routeButton.dataset.route === "#home") {
         confirmLeaveLiveToMenu();
         return;
@@ -104,6 +112,10 @@ function bindGlobalActions() {
       }
     }
   });
+}
+
+function shouldConfirmRouteLeave(nextRoute) {
+  return routeEditorDirty && location.hash.startsWith("#route/") && nextRoute !== location.hash;
 }
 
 function confirmLeaveLiveToMenu() {
@@ -191,6 +203,7 @@ function renderRoute() {
   const screen = parts[0];
   const id = parts[1];
   const mode = parts[2];
+  if (screen !== "route") routeEditorDirty = false;
 
   if (screen === "course" && id === "new") {
     renderCourseForm();
@@ -225,28 +238,42 @@ function setTitle(title) {
 function renderHome() {
   setTitle("Accueil");
 
-  const cards = courses.length
-    ? courses.map(renderCourseCard).join("")
-    : `<div class="empty">Vous n’avez pas encore créé de course.</div>`;
+  const hasCourses = courses.length > 0;
 
   app.innerHTML = `
     <section class="stack">
-      <div class="home-hero">
-        <img class="app-logo" src="assets/logo.png" alt="Race Split Assistant">
-        <h2>Race Split Assistant</h2>
-        <p>Prépare tes splits. Suis ton chrono. Gère ta course.</p>
-        <div class="actions two">
-          <button class="button" type="button" data-route="#course/new">Créer une course</button>
-          <label class="button secondary" for="import-json">Importer</label>
+      ${hasCourses ? `
+        <div class="home-hero">
+          <img class="app-logo" src="assets/logo.png" alt="Race Split Assistant">
+          <div>
+            <h2>Tes stratégies de course</h2>
+            <p>Prépare tes splits. Dessine ton parcours. Lance ton chrono sans GPS.</p>
+          </div>
+          <div class="actions two">
+            <button class="button" type="button" data-route="#course/new">Nouvelle course</button>
+            <label class="button secondary" for="import-json">Importer</label>
+          </div>
+          <input class="sr-only" id="import-json" type="file" accept="application/json">
         </div>
-        <input class="sr-only" id="import-json" type="file" accept="application/json">
-      </div>
+      ` : `
+        <div class="empty-state">
+          <img class="app-logo large" src="assets/logo.png" alt="Race Split Assistant">
+          <h2>Prépare ta stratégie de course</h2>
+          <p>Crée une course, définis ton objectif, dessine ton parcours et organise tes temps de passage.</p>
+          <div class="actions two">
+            <button class="button" type="button" data-route="#course/new">Créer ma première course</button>
+            <label class="button secondary" for="import-json">Importer</label>
+          </div>
+          <input class="sr-only" id="import-json" type="file" accept="application/json">
+        </div>
+      `}
       ${renderInstallCard()}
       <div class="card how-card">
         <h2>Comment ça marche ?</h2>
         <ol class="how-list">
           <li>Crée une course.</li>
-          <li>Ajoute tes checkpoints.</li>
+          <li>Dessine ton parcours.</li>
+          <li>Ajoute tes temps de passage.</li>
           <li>Lance le mode live.</li>
           <li>Appuie sur “Point passé” à chaque ravito ou repère.</li>
           <li>L’app calcule ton avance, ton retard, le temps restant et la distance restante.</li>
@@ -261,7 +288,7 @@ function renderHome() {
           <button class="button success" type="button" data-route="#live">Reprendre le live</button>
         </div>
       ` : ""}
-      <div class="grid">${cards}</div>
+      ${hasCourses ? `<div class="course-grid">${courses.map(renderCourseCard).join("")}</div>` : ""}
     </section>
   `;
 
@@ -439,6 +466,9 @@ function renderResumeRun() {
 
 function renderCourseCard(course) {
   const status = getCourseRunStatus(course.id);
+  const routeStatus = getRouteDesignStatus(course);
+  const splitStatus = getSplitPreparationStatus(course);
+  const routeButtonLabel = routeStatus.ready ? "Modifier le parcours" : "Dessiner";
 
   return `
     <article class="card course-card">
@@ -447,7 +477,8 @@ function renderCourseCard(course) {
           <h2>${escapeHtml(course.name)}</h2>
           <div class="tag-row">
             <span class="tag">${escapeHtml(course.type)}</span>
-            <span class="tag gray">${course.checkpoints.length} checkpoints</span>
+            <span class="tag ${routeStatus.className}">${routeStatus.label}</span>
+            <span class="tag ${splitStatus.className}">${splitStatus.label}</span>
             ${status ? `<span class="tag ${status.className}">${status.label}</span>` : ""}
           </div>
         </div>
@@ -455,18 +486,32 @@ function renderCourseCard(course) {
       <div class="meta-grid">
         <div class="metric"><span>Distance</span><strong>${formatKm(course.distanceKm)}</strong></div>
         <div class="metric"><span>Objectif</span><strong>${formatTime(course.targetSeconds)}</strong></div>
+        <div class="metric"><span>Temps de passage</span><strong>${course.checkpoints.length}</strong></div>
       </div>
       <div class="actions two course-actions">
-        <button class="button secondary" type="button" data-action="view-course" data-id="${course.id}">Voir</button>
-        <button class="button" type="button" data-action="quick-start" data-id="${course.id}">Lancer</button>
+        <button class="button" type="button" data-action="view-course" data-id="${course.id}">Ouvrir</button>
+        <button class="button secondary" type="button" data-route="#route/${course.id}">${routeButtonLabel}</button>
       </div>
-      <button class="button secondary" type="button" data-route="#route/${course.id}">Dessiner le parcours</button>
       <div class="actions two course-actions">
         <button class="button ghost" type="button" data-action="duplicate-course" data-id="${course.id}">Dupliquer</button>
         <button class="button danger" type="button" data-action="delete-course" data-id="${course.id}">Supprimer</button>
       </div>
     </article>
   `;
+}
+
+function getRouteDesignStatus(course) {
+  const routeDesign = normalizeRouteDesign(course.routeDesign);
+  const ready = routeDesign.points.length >= 2 && routeDesign.segments.length >= 1;
+  return ready
+    ? { ready, label: "Parcours prêt", className: "status-good" }
+    : { ready, label: "Parcours à dessiner", className: "status-neutral" };
+}
+
+function getSplitPreparationStatus(course) {
+  return course.checkpoints.length
+    ? { ready: true, label: `${course.checkpoints.length} temps de passage`, className: "status-good" }
+    : { ready: false, label: "Splits à préparer", className: "status-warning" };
 }
 
 function getCourseRunStatus(courseId) {
@@ -488,36 +533,78 @@ function renderCourseForm(courseId = null) {
 
   app.innerHTML = `
     ${editing ? renderScreenNav(course.id) : ""}
-    <section class="card">
+    <section class="card guided-form-card">
       <form class="form" id="course-form" novalidate>
         <div id="form-errors"></div>
-        <div class="field">
-          <label for="name">Nom de la course</label>
-          <input id="name" name="name" required value="${escapeAttr(course.name)}">
+        <div class="form-section">
+          <div>
+            <p class="section-kicker">Étape 1</p>
+            <h2>Informations principales</h2>
+          </div>
+          <div class="grid two">
+            <div class="field">
+              <label for="name">Nom de la course</label>
+              <input id="name" name="name" required value="${escapeAttr(course.name)}">
+            </div>
+            <div class="field">
+              <label for="distanceKm">Distance totale</label>
+              <input id="distanceKm" name="distanceKm" inputmode="decimal" required value="${escapeAttr(course.distanceKm || "")}">
+              <small>Exemple : 19.7</small>
+            </div>
+          </div>
         </div>
-        <div class="grid two">
-          <div class="field">
-            <label for="distanceKm">Distance totale en km</label>
-            <input id="distanceKm" name="distanceKm" inputmode="decimal" required value="${escapeAttr(course.distanceKm || "")}">
-            <small>Exemple : 19.7</small>
+
+        <div class="form-section">
+          <div>
+            <p class="section-kicker">Étape 2</p>
+            <h2>Objectif chrono</h2>
+          </div>
+          ${renderDurationPicker("target", course.targetSeconds, "Objectif")}
+        </div>
+
+        <div class="form-section">
+          <div>
+            <p class="section-kicker">Détails</p>
+            <h2>Contexte de course</h2>
           </div>
           <div class="field">
-            <label for="targetTime">Objectif chrono</label>
-            <input id="targetTime" name="targetTime" placeholder="HH:MM:SS ou MM:SS" required value="${formatTimeInput(course.targetSeconds)}">
-            <small>Exemple : 02:00:00</small>
+            <label for="type">Type de course</label>
+            <select id="type" name="type">${options(courseTypes, course.type)}</select>
+          </div>
+          <div class="field">
+            <label for="notes">Notes personnelles</label>
+            <textarea id="notes" name="notes">${escapeHtml(course.notes || "")}</textarea>
           </div>
         </div>
-        <div class="field">
-          <label for="type">Type de course</label>
-          <select id="type" name="type">${options(courseTypes, course.type)}</select>
-        </div>
-        <div class="field">
-          <label for="notes">Notes personnelles</label>
-          <textarea id="notes" name="notes">${escapeHtml(course.notes || "")}</textarea>
-        </div>
+
+        ${editing ? "" : `
+          <div class="form-section">
+            <div>
+              <p class="section-kicker">Étape 3</p>
+              <h2>Parcours</h2>
+              <p class="muted-text">Quand veux-tu dessiner le parcours ?</p>
+            </div>
+            <div class="choice-grid">
+              <label class="choice-card">
+                <input type="radio" name="routeTiming" value="later" checked>
+                <span>
+                  <strong>Plus tard</strong>
+                  <small>Créer la course maintenant et dessiner le parcours ensuite.</small>
+                </span>
+              </label>
+              <label class="choice-card">
+                <input type="radio" name="routeTiming" value="now">
+                <span>
+                  <strong>Maintenant</strong>
+                  <small>Créer la course puis ouvrir directement l’éditeur de parcours.</small>
+                </span>
+              </label>
+            </div>
+          </div>
+        `}
         <div class="actions two">
           <button class="button" type="submit">Enregistrer</button>
-          <button class="button secondary" type="button" data-route="#home">Annuler</button>
+          <button class="button secondary" type="button" data-route="${editing ? `#summary/${course.id}` : "#home"}">Annuler</button>
         </div>
       </form>
     </section>
@@ -527,6 +614,26 @@ function renderCourseForm(courseId = null) {
     event.preventDefault();
     saveCourseFromForm(courseId);
   });
+  bindDurationPicker("target", "Objectif");
+  bindChoiceCards();
+}
+
+function bindChoiceCards() {
+  const cards = Array.from(app.querySelectorAll(".choice-card"));
+  if (!cards.length) return;
+
+  const refresh = () => {
+    cards.forEach((card) => {
+      const input = card.querySelector("input");
+      card.classList.toggle("is-selected", Boolean(input && input.checked));
+    });
+  };
+
+  cards.forEach((card) => {
+    const input = card.querySelector("input");
+    if (input) input.addEventListener("change", refresh);
+  });
+  refresh();
 }
 
 function saveCourseFromForm(courseId) {
@@ -534,9 +641,10 @@ function saveCourseFromForm(courseId) {
   const formData = new FormData(form);
   const name = String(formData.get("name") || "").trim();
   const distanceKm = parseDecimal(formData.get("distanceKm"));
-  const targetSeconds = parseTimeInput(formData.get("targetTime"));
+  const targetSeconds = readDurationFromForm(formData, "target");
   const type = String(formData.get("type") || "Autre");
   const notes = String(formData.get("notes") || "").trim();
+  const routeTiming = String(formData.get("routeTiming") || "later");
 
   const errors = [];
   if (!name) errors.push("Le nom est obligatoire.");
@@ -567,14 +675,14 @@ function saveCourseFromForm(courseId) {
   course.updatedAt = now;
 
   saveCourses();
-  location.hash = `#splits/${course.id}`;
+  location.hash = !courseId && routeTiming === "now" ? `#route/${course.id}` : `#summary/${course.id}`;
 }
 
 function renderSplits(courseId) {
   const course = findCourse(courseId);
   if (!course) return navigateHome();
 
-  setTitle("Splits");
+  setTitle("Temps de passage");
   course.checkpoints.sort(sortByDistance);
   const metrics = calculateCourseMetrics(course);
   const alert = getLastCheckpointAlert(course);
@@ -590,14 +698,14 @@ function renderSplits(courseId) {
           <div class="metric"><span>Objectif</span><strong>${formatTime(course.targetSeconds)}</strong></div>
           <div class="metric"><span>Allure moyenne</span><strong>${formatPace(metrics.globalPace)}</strong></div>
           <div class="metric"><span>Ravitos prévus</span><strong>${formatShortDuration(metrics.totalAidSeconds)}</strong></div>
-          <div class="metric"><span>Checkpoints</span><strong>${course.checkpoints.length}</strong></div>
+          <div class="metric"><span>Temps de passage</span><strong>${course.checkpoints.length}</strong></div>
         </div>
-        <button class="button add-checkpoint-button" type="button" data-action="focus-checkpoint-form">Ajouter un checkpoint</button>
+        <button class="button add-checkpoint-button" type="button" data-action="focus-checkpoint-form">Ajouter un temps de passage</button>
       </div>
       ${alert ? `<div class="notice warning">${escapeHtml(alert)}</div>` : ""}
       <div class="card checkpoint-editor is-hidden" id="checkpoint-editor"></div>
       <div class="split-list">
-        ${course.checkpoints.length ? course.checkpoints.map((checkpoint, index) => renderSplitCard(course, checkpoint, index)).join("") : `<div class="empty">Aucun checkpoint pour cette course.</div>`}
+        ${course.checkpoints.length ? course.checkpoints.map((checkpoint, index) => renderSplitCard(course, checkpoint, index)).join("") : `<div class="empty">Aucun temps de passage pour cette course.</div>`}
       </div>
       <div class="actions two">
         <button class="button secondary" type="button" data-route="#course/${course.id}/edit">Modifier la course</button>
@@ -638,7 +746,7 @@ function renderCheckpointForm(course, checkpoint = null) {
       <div id="form-errors"></div>
       <div class="grid two">
         <div class="field">
-          <label for="checkpointName">Nom du checkpoint</label>
+          <label for="checkpointName">Nom du temps de passage</label>
           <input id="checkpointName" name="checkpointName" required value="${escapeAttr(item.name)}">
         </div>
         <div class="field">
@@ -647,20 +755,22 @@ function renderCheckpointForm(course, checkpoint = null) {
           <small>Distance depuis le départ.</small>
         </div>
       </div>
-      <div class="grid two">
-        <div class="field">
-          <label for="checkpointTime">Temps cible cumulé</label>
-          <input id="checkpointTime" name="checkpointTime" placeholder="HH:MM:SS" required value="${formatTimeInput(item.targetSeconds)}">
-          <small>Chrono prévu à ce checkpoint.</small>
+      <div class="form-section compact">
+        <div>
+          <h3>Temps cible cumulé</h3>
+          <p class="muted-text">Chrono prévu à ce point de passage.</p>
         </div>
+        ${renderDurationPicker("checkpointTarget", item.targetSeconds, "Temps cible")}
+      </div>
+      <div class="grid two">
         <div class="field">
           <label for="zoneType">Type de zone</label>
           <select id="zoneType" name="zoneType">${options(zoneTypes, item.zoneType)}</select>
         </div>
-      </div>
-      <div class="field">
-        <label for="strategy">Stratégie</label>
-        <select id="strategy" name="strategy">${options(strategies, item.strategy)}</select>
+        <div class="field">
+          <label for="strategy">Stratégie</label>
+          <select id="strategy" name="strategy">${options(strategies, item.strategy)}</select>
+        </div>
       </div>
       <div class="field" id="aid-field">
         <label for="aidSeconds">Temps ravito max en secondes</label>
@@ -671,7 +781,7 @@ function renderCheckpointForm(course, checkpoint = null) {
         <textarea id="advice" name="advice">${escapeHtml(item.advice || "")}</textarea>
       </div>
       <div class="actions two">
-        <button class="button" type="submit">Enregistrer le checkpoint</button>
+        <button class="button" type="submit">Enregistrer</button>
         <button class="button secondary" type="button" data-action="clear-checkpoint">Annuler</button>
       </div>
     </form>
@@ -694,14 +804,14 @@ function saveCheckpointFromForm(courseId) {
   const checkpointId = String(formData.get("checkpointId") || "");
   const name = String(formData.get("checkpointName") || "").trim();
   const distanceKm = parseDecimal(formData.get("checkpointDistance"));
-  const targetSeconds = parseTimeInput(formData.get("checkpointTime"));
+  const targetSeconds = readDurationFromForm(formData, "checkpointTarget");
   const zoneType = String(formData.get("zoneType") || "Autre");
   const strategy = String(formData.get("strategy") || "Libre");
   const advice = String(formData.get("advice") || "").trim();
   const aidSeconds = Math.max(0, Math.round(parseDecimal(formData.get("aidSeconds")) || 0));
 
   const errors = [];
-  if (!name) errors.push("Le nom du checkpoint est obligatoire.");
+  if (!name) errors.push("Le nom du temps de passage est obligatoire.");
   if (!Number.isFinite(distanceKm) || distanceKm < 0) errors.push("La distance doit être valide.");
   if (targetSeconds === null) errors.push("Le temps cible doit être valide.");
   if (distanceKm > course.distanceKm + 0.001) errors.push("La distance ne doit pas dépasser la distance totale.");
@@ -749,13 +859,14 @@ function showCheckpointForm(course, checkpointId = null) {
   if (!card) return;
 
   card.classList.remove("is-hidden");
-  card.innerHTML = `<h2>${checkpoint ? "Modifier un checkpoint" : "Ajouter un checkpoint"}</h2>${renderCheckpointForm(course, checkpoint)}`;
+  card.innerHTML = `<h2>${checkpoint ? "Modifier un temps de passage" : "Ajouter un temps de passage"}</h2>${renderCheckpointForm(course, checkpoint)}`;
   card.querySelector("#checkpoint-form").addEventListener("submit", (event) => {
     event.preventDefault();
     saveCheckpointFromForm(course.id);
   });
   card.querySelector("[data-action='clear-checkpoint']").addEventListener("click", () => hideCheckpointForm(course.id));
   card.querySelector("#zoneType").addEventListener("change", toggleAidField);
+  bindDurationPicker("checkpointTarget", "Temps cible");
   toggleAidField();
   card.scrollIntoView({ behavior: "smooth", block: "start" });
   card.querySelector("#checkpointName").focus();
@@ -813,23 +924,75 @@ function renderSummary(courseId) {
   const metrics = calculateCourseMetrics(course);
   const alert = getLastCheckpointAlert(course);
   const importantZones = course.checkpoints.filter((checkpoint) => ["Ravito", "Zone difficile", "Finish"].includes(checkpoint.zoneType));
+  const routeStatus = getRouteDesignStatus(course);
+  const splitStatus = getSplitPreparationStatus(course);
+  const routeDesign = normalizeRouteDesign(course.routeDesign);
 
   app.innerHTML = `
     ${renderScreenNav(course.id)}
     <section class="stack">
-      <div class="card">
+      <div class="card dashboard-hero">
         <h2>${escapeHtml(course.name)}</h2>
         <div class="meta-grid">
           <div class="metric"><span>Distance</span><strong>${formatKm(course.distanceKm)}</strong></div>
           <div class="metric"><span>Objectif</span><strong>${formatTime(course.targetSeconds)}</strong></div>
           <div class="metric"><span>Allure globale</span><strong>${formatPace(metrics.globalPace)}</strong></div>
-          <div class="metric"><span>Checkpoints</span><strong>${course.checkpoints.length}</strong></div>
-          <div class="metric"><span>Ravitos prévus</span><strong>${formatShortDuration(metrics.totalAidSeconds)}</strong></div>
           <div class="metric"><span>Type</span><strong>${escapeHtml(course.type)}</strong></div>
         </div>
         ${course.notes ? `<p>${escapeHtml(course.notes)}</p>` : ""}
       </div>
       ${alert ? `<div class="notice warning">${escapeHtml(alert)}</div>` : ""}
+      <div class="dashboard-grid">
+        <article class="card dashboard-card">
+          <div class="card-header">
+            <h2>Parcours</h2>
+            <span class="tag ${routeStatus.className}">${routeStatus.label}</span>
+          </div>
+          ${routeStatus.ready ? `
+            <p>Parcours dessiné.</p>
+            <div class="meta-grid">
+              <div class="metric"><span>Points</span><strong>${routeDesign.points.length}</strong></div>
+              <div class="metric"><span>Segments</span><strong>${routeDesign.segments.length}</strong></div>
+            </div>
+            <button class="button secondary" type="button" data-route="#route/${course.id}">Modifier le parcours</button>
+          ` : `
+            <p class="muted-text">Aucun parcours dessiné pour cette course.</p>
+            <button class="button" type="button" data-route="#route/${course.id}">Dessiner le parcours</button>
+          `}
+        </article>
+
+        <article class="card dashboard-card">
+          <div class="card-header">
+            <h2>Temps de passage</h2>
+            <span class="tag ${splitStatus.className}">${splitStatus.label}</span>
+          </div>
+          ${course.checkpoints.length ? `
+            <div class="meta-grid">
+              <div class="metric"><span>Nombre</span><strong>${course.checkpoints.length}</strong></div>
+              <div class="metric"><span>Ravitos prévus</span><strong>${formatShortDuration(metrics.totalAidSeconds)}</strong></div>
+            </div>
+            <button class="button secondary" type="button" data-route="#splits/${course.id}">Modifier les temps</button>
+          ` : `
+            <p class="muted-text">Aucun temps de passage préparé.</p>
+            <button class="button" type="button" data-route="#splits/${course.id}">Préparer les temps</button>
+          `}
+        </article>
+
+        <article class="card dashboard-card">
+          <h2>Objectif</h2>
+          <div class="meta-grid">
+            <div class="metric"><span>Chrono</span><strong>${formatTime(course.targetSeconds)}</strong></div>
+            <div class="metric"><span>Allure moyenne</span><strong>${formatPace(metrics.globalPace)}</strong></div>
+          </div>
+          <button class="button secondary" type="button" data-route="#course/${course.id}/edit">Modifier la course</button>
+        </article>
+
+        <article class="card dashboard-card">
+          <h2>Mode live</h2>
+          <p class="muted-text">Lance le chrono manuel quand ta stratégie est prête.</p>
+          <button class="button success" type="button" data-action="start-run" ${course.checkpoints.length ? "" : "disabled"}>Lancer le mode course</button>
+        </article>
+      </div>
       <div class="card">
         <h2>Zones importantes</h2>
         <div class="tag-row">
@@ -837,17 +1000,13 @@ function renderSummary(courseId) {
         </div>
       </div>
       <div class="split-list">
-        ${course.checkpoints.map((checkpoint, index) => renderSummaryCheckpoint(course, checkpoint, index)).join("")}
+        ${course.checkpoints.length ? course.checkpoints.map((checkpoint, index) => renderSummaryCheckpoint(course, checkpoint, index)).join("") : `<div class="empty">Ajoute tes premiers temps de passage pour préparer la stratégie.</div>`}
       </div>
-      <div class="actions two">
-        <button class="button secondary" type="button" data-route="#splits/${course.id}">Modifier les splits</button>
-        <button class="button success primary-live-button" type="button" data-action="start-run">Lancer le mode course</button>
-      </div>
-      <button class="button secondary" type="button" data-route="#route/${course.id}">Dessiner le parcours</button>
     </section>
   `;
 
-  app.querySelector("[data-action='start-run']").addEventListener("click", () => startRun(course.id));
+  const startButton = app.querySelector("[data-action='start-run']");
+  if (startButton) startButton.addEventListener("click", () => startRun(course.id));
 }
 
 function renderSummaryCheckpoint(course, checkpoint, index) {
@@ -870,21 +1029,30 @@ function renderRouteEditor(courseId) {
   const course = findCourse(courseId);
   if (!course) return navigateHome();
 
-  setTitle("Parcours");
+  setTitle("Dessiner le parcours");
   course.routeDesign = normalizeRouteDesign(course.routeDesign);
   let draft = structuredCloneSafe(course.routeDesign);
   let segmentMode = "line";
   let draggedPointId = null;
+  let didDragPoint = false;
+  routeEditorDirty = false;
 
   app.innerHTML = `
     ${renderScreenNav(course.id)}
     <section class="stack route-editor">
-      <div class="card">
-        <h2>${escapeHtml(course.name)}</h2>
-        <p class="muted-text">Dessine une base visuelle du parcours. Clique dans la zone pour ajouter des points, puis déplace-les au doigt ou à la souris.</p>
+      <div class="card route-editor-header">
+        <div>
+          <p class="section-kicker">Parcours</p>
+          <h2>${escapeHtml(course.name)}</h2>
+          <p class="muted-text">Clique sur la zone pour placer des points. Chaque nouveau point sera relié au précédent.</p>
+        </div>
         <button class="button secondary" type="button" data-route="#summary/${course.id}">Retour vers la course</button>
       </div>
       <div class="card route-tools">
+        <div class="route-status-row">
+          <strong id="route-mode-label">Mode actuel : Ligne droite</strong>
+          <span id="route-count" class="tag gray">0 point · 0 segment</span>
+        </div>
         <div class="actions two">
           <button class="button" type="button" data-mode="line">Ligne droite</button>
           <button class="button secondary" type="button" data-mode="curve">Courbe</button>
@@ -894,7 +1062,7 @@ function renderRouteEditor(courseId) {
           <button class="button danger secondary-danger" type="button" data-action="reset-route">Réinitialiser le parcours</button>
           <button class="button success" type="button" data-action="save-route">Sauvegarder</button>
         </div>
-        <p id="route-save-status" class="muted-text"></p>
+        <p id="route-save-status" class="route-save-status">Tout est sauvegardé.</p>
       </div>
       <div class="route-canvas-wrap">
         <svg id="route-canvas" class="route-canvas" viewBox="0 0 100 100" preserveAspectRatio="none" role="img" aria-label="Zone de dessin du parcours"></svg>
@@ -904,6 +1072,8 @@ function renderRouteEditor(courseId) {
 
   const svg = app.querySelector("#route-canvas");
   const status = app.querySelector("#route-save-status");
+  const modeLabel = app.querySelector("#route-mode-label");
+  const countLabel = app.querySelector("#route-count");
   const modeButtons = Array.from(app.querySelectorAll("[data-mode]"));
 
   function setMode(mode) {
@@ -913,9 +1083,12 @@ function renderRouteEditor(courseId) {
       button.classList.toggle("is-active", active);
       button.classList.toggle("secondary", !active);
     });
+    modeLabel.textContent = `Mode actuel : ${mode === "curve" ? "Courbe" : "Ligne droite"}`;
   }
 
   function renderDraft() {
+    countLabel.textContent = `${draft.points.length} ${draft.points.length > 1 ? "points" : "point"} · ${draft.segments.length} ${draft.segments.length > 1 ? "segments" : "segment"}`;
+    const hint = getRouteEditorHint(draft);
     svg.innerHTML = `
       <defs>
         <pattern id="route-grid" width="5" height="5" patternUnits="userSpaceOnUse">
@@ -923,11 +1096,12 @@ function renderRouteEditor(courseId) {
         </pattern>
       </defs>
       <rect width="100" height="100" fill="url(#route-grid)"></rect>
+      ${hint ? `<text class="route-empty-hint" x="50" y="50">${hint}</text>` : ""}
       ${draft.segments.map((segment) => renderRouteSegmentSvg(draft, segment)).join("")}
       ${draft.points.map((point, index) => `
         <g class="route-point-group" data-point-id="${point.id}">
-          <circle class="route-point" cx="${point.x}" cy="${point.y}" r="1.8"></circle>
-          <text class="route-point-label" x="${point.x}" y="${Math.max(3, point.y - 3)}">${index + 1}</text>
+          <circle class="route-point ${index === 0 ? "is-start" : ""} ${index === draft.points.length - 1 ? "is-finish" : ""}" cx="${point.x}" cy="${point.y}" r="2.5"></circle>
+          <text class="route-point-label" x="${point.x}" y="${Math.max(4, point.y - 4)}">${escapeHtml(getRoutePointLabel(index, draft.points.length))}</text>
         </g>
       `).join("")}
     `;
@@ -936,12 +1110,23 @@ function renderRouteEditor(courseId) {
       node.addEventListener("pointerdown", (event) => {
         event.preventDefault();
         draggedPointId = node.dataset.pointId;
+        didDragPoint = false;
         svg.setPointerCapture(event.pointerId);
       });
     });
   }
 
+  function markRouteDirty(message = "Modifications non sauvegardées.") {
+    routeEditorDirty = true;
+    status.textContent = message;
+    status.classList.add("is-dirty");
+  }
+
   function addPoint(event) {
+    if (didDragPoint) {
+      didDragPoint = false;
+      return;
+    }
     if (draggedPointId || event.target.closest("[data-point-id]")) return;
     const position = getSvgPoint(svg, event);
     const point = {
@@ -954,7 +1139,7 @@ function renderRouteEditor(courseId) {
     if (previous) {
       draft.segments.push(createRouteSegment(previous, point, segmentMode));
     }
-    status.textContent = "Modifications non sauvegardées.";
+    markRouteDirty();
     renderDraft();
   }
 
@@ -966,7 +1151,8 @@ function renderRouteEditor(courseId) {
     const position = getSvgPoint(svg, event);
     point.x = position.x;
     point.y = position.y;
-    status.textContent = "Modifications non sauvegardées.";
+    didDragPoint = true;
+    markRouteDirty();
     renderDraft();
   });
   svg.addEventListener("pointerup", () => {
@@ -981,13 +1167,13 @@ function renderRouteEditor(courseId) {
     if (!draft.points.length) return;
     const removed = draft.points.pop();
     draft.segments = draft.segments.filter((segment) => segment.from !== removed.id && segment.to !== removed.id);
-    status.textContent = "Dernier point annulé. Pense à sauvegarder.";
+    markRouteDirty("Dernier point annulé. Pense à sauvegarder.");
     renderDraft();
   });
   app.querySelector("[data-action='reset-route']").addEventListener("click", () => {
     confirmDialog("Réinitialiser le dessin du parcours ?", () => {
       draft = createEmptyRouteDesign();
-      status.textContent = "Parcours réinitialisé. Pense à sauvegarder.";
+      markRouteDirty("Parcours réinitialisé. Pense à sauvegarder.");
       renderDraft();
     });
   });
@@ -996,12 +1182,26 @@ function renderRouteEditor(courseId) {
     course.updatedAt = new Date().toISOString();
     saveCourses();
     draft = structuredCloneSafe(course.routeDesign);
+    routeEditorDirty = false;
     status.textContent = "Parcours sauvegardé.";
+    status.classList.remove("is-dirty");
     renderDraft();
   });
 
   setMode(segmentMode);
   renderDraft();
+}
+
+function getRouteEditorHint(draft) {
+  if (!draft.points.length) return "Commence par cliquer ici pour placer le départ.";
+  if (draft.points.length === 1) return "Ajoute un deuxième point pour créer ton premier segment.";
+  return "";
+}
+
+function getRoutePointLabel(index, total) {
+  if (index === 0) return "Départ";
+  if (index === total - 1) return "Arrivée";
+  return String(index + 1);
 }
 
 function renderRouteSegmentSvg(routeDesign, segment) {
@@ -1045,7 +1245,7 @@ function getSvgPoint(svg, event) {
 function startRun(courseId) {
   const course = findCourse(courseId);
   if (!course || course.checkpoints.length === 0) {
-    showModal("Ajoutez au moins un checkpoint avant de lancer la course.");
+    showModal("Ajoutez au moins un temps de passage avant de lancer la course.");
     return;
   }
 
@@ -1234,7 +1434,7 @@ function updateLiveView() {
           <span>Conseil du segment en cours</span>
           <strong>${escapeHtml(current.advice || current.strategy || "Reste régulier.")}</strong>
         </div>
-      ` : `<p>Tous les checkpoints sont passés.</p>`}
+      ` : `<p>Tous les temps de passage sont validés.</p>`}
     </div>
   `;
 
@@ -1403,7 +1603,7 @@ function renderReport() {
         </div>
       </div>
       <div class="history-list">
-        ${activeRun.history.length ? activeRun.history.map(renderReportItem).join("") : `<div class="empty">Aucun checkpoint validé.</div>`}
+        ${activeRun.history.length ? activeRun.history.map(renderReportItem).join("") : `<div class="empty">Aucun temps de passage validé.</div>`}
       </div>
       <div class="actions two">
         <button class="button secondary" type="button" data-route="#home">Accueil</button>
@@ -1460,13 +1660,13 @@ function renderReportItem(item) {
 
 function renderScreenNav(courseId = null) {
   const items = [
-    { label: "Accueil", route: "#home" }
+      { label: "Accueil", route: "#home" }
   ];
 
   if (courseId) {
     items.push(
       { label: "Course", route: `#course/${courseId}/edit` },
-      { label: "Splits", route: `#splits/${courseId}` },
+      { label: "Passages", route: `#splits/${courseId}` },
       { label: "Résumé", route: `#summary/${courseId}` },
       { label: "Parcours", route: `#route/${courseId}` }
     );
@@ -1519,7 +1719,7 @@ function confirmDeleteCourse(courseId) {
 }
 
 function confirmDeleteCheckpoint(courseId, checkpointId) {
-  confirmDialog("Supprimer ce checkpoint ?", () => {
+  confirmDialog("Supprimer ce temps de passage ?", () => {
     const course = findCourse(courseId);
     if (!course) return;
     course.checkpoints = course.checkpoints.filter((item) => item.id !== checkpointId);
@@ -1764,7 +1964,7 @@ function validateImportedCourse(course) {
     errors.push("Course invalide.");
   }
   if (course.checkpoints.some((item) => item.distanceKm > course.distanceKm + 0.001)) {
-    errors.push("Checkpoint hors distance.");
+    errors.push("Temps de passage hors distance.");
   }
   errors.push(...validateCheckpointOrder(course.checkpoints));
   return errors;
@@ -1774,7 +1974,7 @@ function getLastCheckpointAlert(course) {
   const last = course.checkpoints[course.checkpoints.length - 1];
   if (!last) return "";
   if (Math.abs(last.distanceKm - course.distanceKm) > 0.01) {
-    return "Le dernier checkpoint ne correspond pas à la distance totale de la course.";
+    return "Le dernier temps de passage ne correspond pas à la distance totale de la course.";
   }
   return "";
 }
@@ -1823,6 +2023,69 @@ function parseDecimal(value) {
   return Number(normalized);
 }
 
+function secondsToParts(seconds) {
+  const safe = Math.max(0, Math.round(Number(seconds) || 0));
+  return {
+    hours: Math.floor(safe / 3600),
+    minutes: Math.floor((safe % 3600) / 60),
+    seconds: safe % 60
+  };
+}
+
+function renderDurationPicker(prefix, totalSeconds, label) {
+  const parts = secondsToParts(totalSeconds);
+  return `
+    <div class="duration-picker" data-duration-picker="${prefix}">
+      <div class="duration-field">
+        <label for="${prefix}Hours">Heures</label>
+        <input id="${prefix}Hours" name="${prefix}Hours" type="number" inputmode="numeric" min="0" step="1" value="${parts.hours}">
+      </div>
+      <div class="duration-field">
+        <label for="${prefix}Minutes">Minutes</label>
+        <input id="${prefix}Minutes" name="${prefix}Minutes" type="number" inputmode="numeric" min="0" max="59" step="1" value="${parts.minutes}">
+      </div>
+      <div class="duration-field">
+        <label for="${prefix}Seconds">Secondes</label>
+        <input id="${prefix}Seconds" name="${prefix}Seconds" type="number" inputmode="numeric" min="0" max="59" step="1" value="${parts.seconds}">
+      </div>
+      <p class="duration-preview" id="${prefix}-duration-preview">${escapeHtml(label)} : ${formatDurationLabel(totalSeconds)}</p>
+    </div>
+  `;
+}
+
+function bindDurationPicker(prefix, label) {
+  const picker = app.querySelector(`[data-duration-picker="${prefix}"]`);
+  if (!picker) return;
+
+  const updatePreview = () => {
+    const formData = new FormData(app.querySelector("form"));
+    const seconds = readDurationFromForm(formData, prefix);
+    const preview = app.querySelector(`#${prefix}-duration-preview`);
+    if (preview) preview.textContent = `${label} : ${formatDurationLabel(seconds || 0)}`;
+  };
+
+  picker.querySelectorAll("input").forEach((input) => {
+    input.addEventListener("input", updatePreview);
+    input.addEventListener("blur", () => {
+      const max = input.max ? Number(input.max) : null;
+      let value = Math.max(Number(input.min || 0), Math.round(Number(input.value) || 0));
+      if (max !== null && Number.isFinite(max)) value = Math.min(max, value);
+      input.value = String(value);
+      updatePreview();
+    });
+  });
+  updatePreview();
+}
+
+function readDurationFromForm(formData, prefix) {
+  const hours = Number(formData.get(`${prefix}Hours`));
+  const minutes = Number(formData.get(`${prefix}Minutes`));
+  const seconds = Number(formData.get(`${prefix}Seconds`));
+  if (!Number.isFinite(hours) || !Number.isFinite(minutes) || !Number.isFinite(seconds)) return null;
+  if (hours < 0 || minutes < 0 || minutes > 59 || seconds < 0 || seconds > 59) return null;
+  return Math.round(hours) * 3600 + Math.round(minutes) * 60 + Math.round(seconds);
+}
+
 function formatTime(seconds) {
   const safe = Math.max(0, Math.round(Number(seconds) || 0));
   const hours = Math.floor(safe / 3600);
@@ -1841,6 +2104,11 @@ function formatShortDuration(seconds) {
   const minutes = Math.floor(safe / 60);
   const secs = safe % 60;
   return minutes ? `${minutes} min ${secs} s` : `${secs} s`;
+}
+
+function formatDurationLabel(seconds) {
+  const parts = secondsToParts(seconds);
+  return `${parts.hours}h ${String(parts.minutes).padStart(2, "0")}min ${String(parts.seconds).padStart(2, "0")}s`;
 }
 
 function formatKm(value) {
@@ -1917,88 +2185,6 @@ function createBlankCourse() {
     routeDesign: createEmptyRouteDesign(),
     createdAt: "",
     updatedAt: ""
-  };
-}
-
-function ensureDefaultCourseTemplates() {
-  const templates = [
-    createExampleCourse,
-    createSisterFinishCourse
-  ];
-  let added = false;
-
-  templates.forEach((createTemplate) => {
-    const template = createTemplate();
-    const exists = courses.some((course) => normalizeName(course.name) === normalizeName(template.name));
-    if (!exists) {
-      courses.push(template);
-      added = true;
-    }
-  });
-
-  return added;
-}
-
-function createExampleCourse() {
-  const now = new Date().toISOString();
-  return {
-    id: uid(),
-    name: "AUT 2026 — Objectif 2h",
-    distanceKm: 19.7,
-    targetSeconds: 7200,
-    type: "Urban Trail",
-    notes: "Course sans GPS, gestion manuelle aux ravitos et checkpoints.",
-    createdAt: now,
-    updatedAt: now,
-    routeDesign: createEmptyRouteDesign(),
-    checkpoints: [
-      checkpoint("Départ", 0, "00:00:00", "Départ", "Course continue", "Départ calme. Ne gaspille pas d’énergie."),
-      checkpoint("Ravito 1", 4.3, "00:25:15", "Ravito", "Course continue", "Eau rapide. Ne t’éternise pas.", 15),
-      checkpoint("Ravito 2", 6.7, "00:40:45", "Ravito", "Marche rapide autorisée", "Bois vite. Garde du jus pour la partie difficile.", 15),
-      checkpoint("Ravito 3", 10, "01:03:30", "Zone difficile", "Marche rapide autorisée", "Zone clé. Ne fais pas le héros. Marche active dans les grosses montées.", 30),
-      checkpoint("Ravito 4", 12.5, "01:18:00", "Relance", "Descente contrôlée", "Relance progressive. Protège les jambes en descente.", 15),
-      checkpoint("Ravito 5", 15.8, "01:37:00", "Ravito", "Relance progressive", "Dernier vrai ravito. Bois, mais reste concentré.", 30),
-      checkpoint("Ravito 6", 18.5, "01:53:15", "Finish", "Finish au mental", "Une gorgée maximum. Tu repars directement.", 10),
-      checkpoint("Arrivée", 19.7, "02:00:00", "Finish", "Finish au mental", "Dernier bloc. Continue jusqu’à la ligne.")
-    ]
-  };
-}
-
-function createSisterFinishCourse() {
-  const now = new Date().toISOString();
-  return {
-    id: uid(),
-    name: "AUT 2026 — Sœur Finish 3h",
-    distanceKm: 19.7,
-    targetSeconds: 10800,
-    type: "Urban Trail",
-    notes: "Plan finisher rapide pour une personne peu préparée. Objectif : finir en 3h maximum. Stratégie basée sur marche rapide majoritaire, petits trots réguliers sur plat ou descente facile, aucune course forcée en montée. Les ravitos doivent rester très courts.",
-    createdAt: now,
-    updatedAt: now,
-    routeDesign: createEmptyRouteDesign(),
-    checkpoints: [
-      checkpoint("Départ", 0, "00:00:00", "Départ", "Marche rapide autorisée", "Départ calme. Ne pas se laisser entraîner par le groupe. L’objectif est de tenir jusqu’au bout.", 0),
-      checkpoint("Ravito 1", 4.3, "00:35:00", "Ravito", "Course/marche", "Marche rapide avec petits trots faciles sur les portions plates. Eau rapide, ne pas s’arrêter longtemps.", 20),
-      checkpoint("Ravito 2", 6.7, "00:56:00", "Ravito", "Course/marche", "Rester régulière. Ne pas forcer avant la partie difficile. Trot léger seulement si le souffle est bon.", 20),
-      checkpoint("Ravito 3", 10, "01:31:00", "Zone difficile", "Marche rapide autorisée", "Partie clé. Marcher toutes les montées. Garder des petits pas actifs. Ne pas chercher à courir si la pente casse le souffle.", 40),
-      checkpoint("Ravito 4", 12.5, "01:53:00", "Relance", "Descente contrôlée", "Descente contrôlée. Relancer doucement si les jambes répondent. Ne pas taper fort dans les quadriceps.", 20),
-      checkpoint("Ravito 5", 15.8, "02:23:00", "Ravito", "Course/marche", "Partie mentale. Alterner marche rapide et petits trots de 30 à 60 secondes. Ne pas transformer la marche en balade.", 40),
-      checkpoint("Ravito 6", 18.5, "02:49:00", "Finish", "Finish au mental", "Dernier ravito très court. Une gorgée maximum puis repartir. Garder une marche forte ou un petit trot jusqu’à la fin.", 15),
-      checkpoint("Arrivée", 19.7, "03:00:00", "Finish", "Finish au mental", "Dernier bloc. Ne pas s’arrêter. Continuer jusqu’à la ligne, même lentement.", 0)
-    ]
-  };
-}
-
-function checkpoint(name, distanceKm, targetTime, zoneType, strategy, advice, aidSeconds = 0) {
-  return {
-    id: uid(),
-    name,
-    distanceKm,
-    targetSeconds: parseTimeInput(targetTime),
-    zoneType,
-    strategy,
-    advice,
-    aidSeconds
   };
 }
 
@@ -2186,15 +2372,6 @@ function slug(value) {
     .replace(/[\u0300-\u036f]/g, "")
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-|-$/g, "");
-}
-
-function normalizeName(value) {
-  return String(value || "")
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/\s+/g, " ")
-    .trim();
 }
 
 function uid() {

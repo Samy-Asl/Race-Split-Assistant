@@ -265,6 +265,11 @@ h3 {
   box-shadow: var(--shadow);
 }
 
+.app-logo.large {
+  width: 92px;
+  height: 92px;
+}
+
 .home-hero h2 {
   margin: 0;
   font-size: 1.55rem;
@@ -274,6 +279,28 @@ h3 {
   margin: 0;
   color: var(--muted);
   font-weight: 650;
+}
+
+.empty-state {
+  display: grid;
+  gap: 16px;
+  justify-items: start;
+  padding: 24px 18px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: linear-gradient(180deg, #ffffff 0%, #f8f9fb 100%);
+}
+
+.empty-state h2 {
+  margin: 0;
+  font-size: 1.45rem;
+}
+
+.empty-state p {
+  margin: 0;
+  color: var(--muted);
+  font-weight: 650;
+  line-height: 1.45;
 }
 
 .how-list {
@@ -310,6 +337,11 @@ h3 {
 }
 
 .course-card {
+  display: grid;
+  gap: 12px;
+}
+
+.course-grid {
   display: grid;
   gap: 12px;
 }
@@ -373,6 +405,115 @@ h3 {
 .form {
   display: grid;
   gap: 14px;
+}
+
+.guided-form-card {
+  padding: 14px;
+}
+
+.form-section {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #ffffff;
+}
+
+.form-section.compact {
+  padding: 12px;
+  background: var(--soft);
+}
+
+.section-kicker {
+  margin: 0 0 4px;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.form-section h2,
+.form-section h3 {
+  margin-bottom: 0;
+}
+
+.duration-picker {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.duration-field {
+  display: grid;
+  gap: 6px;
+}
+
+.duration-field label {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.duration-field input {
+  min-height: 52px;
+  text-align: center;
+  font-size: 1.05rem;
+  font-weight: 850;
+}
+
+.duration-preview {
+  grid-column: 1 / -1;
+  margin: 2px 0 0;
+  padding: 10px 12px;
+  border-radius: var(--radius);
+  background: var(--soft);
+  color: var(--text);
+  font-weight: 800;
+}
+
+.choice-grid {
+  display: grid;
+  gap: 10px;
+}
+
+.choice-card {
+  display: grid;
+  gap: 10px;
+  align-items: start;
+  min-height: 72px;
+  padding: 13px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #ffffff;
+  cursor: pointer;
+}
+
+.choice-card input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.choice-card span {
+  display: grid;
+  gap: 4px;
+}
+
+.choice-card strong {
+  font-size: 1rem;
+}
+
+.choice-card small {
+  color: var(--muted);
+  line-height: 1.35;
+}
+
+.choice-card:has(input:checked),
+.choice-card.is-selected {
+  border-color: var(--primary);
+  background: rgba(36, 54, 75, 0.06);
+  box-shadow: inset 0 0 0 1px var(--primary);
 }
 
 .field {
@@ -443,6 +584,27 @@ textarea {
   text-align: center;
 }
 
+.dashboard-hero {
+  display: grid;
+  gap: 12px;
+}
+
+.dashboard-hero p,
+.dashboard-card p {
+  margin: 0;
+}
+
+.dashboard-grid {
+  display: grid;
+  gap: 12px;
+}
+
+.dashboard-card {
+  display: grid;
+  gap: 12px;
+  align-content: start;
+}
+
 .split-list {
   display: grid;
   gap: 12px;
@@ -452,9 +614,29 @@ textarea {
   gap: 14px;
 }
 
+.route-editor-header {
+  display: grid;
+  gap: 14px;
+}
+
 .route-tools {
   display: grid;
   gap: 12px;
+}
+
+.route-status-row {
+  display: grid;
+  gap: 8px;
+}
+
+.route-save-status {
+  margin: 0;
+  color: var(--green);
+  font-weight: 800;
+}
+
+.route-save-status.is-dirty {
+  color: var(--orange);
 }
 
 .route-canvas-wrap {
@@ -504,11 +686,31 @@ textarea {
   stroke-width: 2.6;
 }
 
+.route-point.is-start {
+  fill: rgba(31, 138, 76, 0.16);
+  stroke: var(--green);
+}
+
+.route-point.is-finish {
+  fill: rgba(36, 54, 75, 0.12);
+  stroke: var(--primary);
+}
+
 .route-point-label {
-  font-size: 4px;
+  font-size: 3.2px;
   font-weight: 850;
   text-anchor: middle;
   fill: var(--black);
+  pointer-events: none;
+  user-select: none;
+}
+
+.route-empty-hint {
+  font-size: 4px;
+  font-weight: 800;
+  text-anchor: middle;
+  dominant-baseline: middle;
+  fill: rgba(17, 17, 17, 0.58);
   pointer-events: none;
   user-select: none;
 }
@@ -965,6 +1167,18 @@ textarea {
 
   .grid.two {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .course-grid,
+  .dashboard-grid,
+  .choice-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .route-editor-header,
+  .route-status-row {
+    grid-template-columns: 1fr auto;
+    align-items: center;
   }
 
   .actions {

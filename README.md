@@ -6,23 +6,22 @@ L’application fonctionne sans GPS, sans capteurs de mouvement, sans API extern
 
 ## Logo et icônes
 
-Les fichiers PWA sont dans `assets/` :
+Le fichier PWA principal est dans `assets/` :
 
 - `assets/logo.png`
-- `assets/icon-192.png`
-- `assets/icon-512.png`
-- `assets/apple-touch-icon.png`
-- `assets/favicon.png`
 
-Ces fichiers sont référencés par le manifest, Safari iPhone et le favicon navigateur.
+Ce logo est référencé par le manifest, Safari iPhone et le favicon navigateur.
 
 ## Principe
 
 1. Créez une course avec une distance et un objectif chrono.
-2. Ajoutez vos checkpoints : ravitos, repères, zones difficiles, finish.
-3. Lancez le mode live.
-4. Appuyez sur `Point passé` à chaque ravito ou repère.
-5. L’application calcule votre avance, votre retard, la distance restante, le temps restant et l’allure nécessaire.
+2. Dessinez le parcours maintenant ou plus tard.
+3. Ajoutez vos temps de passage : ravitos, repères, zones difficiles, finish.
+4. Lancez le mode live.
+5. Appuyez sur `Point passé` à chaque ravito ou repère.
+6. L’application calcule votre avance, votre retard, la distance restante, le temps restant et l’allure nécessaire.
+
+L’application ne crée plus de course d’exemple automatiquement. Une première installation démarre vide pour laisser l’utilisateur construire ses propres stratégies.
 
 Si le premier checkpoint est `Départ` à `0 km` et `00:00:00`, il est validé automatiquement. Le premier point manuel devient donc le premier vrai checkpoint après le départ.
 
@@ -77,31 +76,47 @@ Au redémarrage, un écran `Course en cours détectée` permet de reprendre ou d
 
 ## Créer une course
 
-Depuis l’accueil, utilisez `Créer une course`.
+Depuis l’accueil, utilisez `Créer ma première course` ou `Nouvelle course`.
 
 Champs principaux :
 
 - nom ;
 - distance totale, par exemple `19.7` ;
-- objectif chrono, par exemple `02:00:00` ;
+- objectif chrono avec des champs séparés heures, minutes et secondes ;
 - type de course ;
-- notes personnelles.
+- notes personnelles ;
+- choix du moment pour dessiner le parcours : maintenant ou plus tard.
 
-## Créer des splits
+## Dessiner le parcours
 
-Dans l’écran `Splits`, ajoutez les checkpoints.
+Depuis le tableau de bord d’une course, utilisez `Dessiner le parcours`.
 
-Chaque checkpoint contient :
+L’éditeur SVG permet de :
+
+- choisir un segment en ligne droite ou en courbe ;
+- cliquer dans la zone pour placer des points ;
+- déplacer les points au doigt ou à la souris ;
+- annuler le dernier point ;
+- réinitialiser le dessin avec confirmation ;
+- sauvegarder le parcours dans la course.
+
+Le premier point est identifié comme départ, le dernier comme arrivée. Les modifications non sauvegardées sont signalées dans l’éditeur.
+
+## Créer des temps de passage
+
+Dans l’écran `Passages`, ajoutez les temps de passage.
+
+Chaque temps de passage contient :
 
 - nom ;
 - distance cumulée depuis le départ ;
-- temps cible cumulé ;
+- temps cible cumulé avec des champs heures, minutes et secondes ;
 - type de zone ;
 - stratégie ;
 - conseil personnel ;
 - temps ravito max si nécessaire.
 
-Les checkpoints sont triés par distance. Les distances et temps cibles doivent rester strictement croissants. Un avertissement apparaît si le dernier checkpoint ne correspond pas à la distance totale.
+Les temps de passage sont triés par distance. Les distances et temps cibles doivent rester strictement croissants. Un avertissement apparaît si le dernier point ne correspond pas à la distance totale.
 
 ## Exporter et importer
 
