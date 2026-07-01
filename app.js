@@ -241,54 +241,51 @@ function renderHome() {
   const hasCourses = courses.length > 0;
 
   app.innerHTML = `
-    <section class="stack">
-      ${hasCourses ? `
-        <div class="home-hero">
-          <img class="app-logo" src="assets/logo.png" alt="Race Split Assistant">
-          <div>
-            <h2>Tes stratégies de course</h2>
-            <p>Prépare tes splits. Dessine ton parcours. Lance ton chrono sans GPS.</p>
-          </div>
-          <div class="actions two">
-            <button class="button" type="button" data-route="#course/new">Nouvelle course</button>
-            <label class="button secondary" for="import-json">Importer</label>
-          </div>
-          <input class="sr-only" id="import-json" type="file" accept="application/json">
-        </div>
-      ` : `
-        <div class="empty-state">
+    <section class="stack home-screen">
+      <div class="home-hero app-hero">
+        <div class="hero-brand">
           <img class="app-logo large" src="assets/logo.png" alt="Race Split Assistant">
-          <h2>Prépare ta stratégie de course</h2>
-          <p>Crée une course, définis ton objectif, dessine ton parcours et organise tes temps de passage.</p>
-          <div class="actions two">
-            <button class="button" type="button" data-route="#course/new">Créer ma première course</button>
-            <label class="button secondary" for="import-json">Importer</label>
+          <div>
+            <p class="section-kicker">Sans GPS · Offline · Mobile-first</p>
+            <h2>Prépare ta stratégie de course</h2>
           </div>
-          <input class="sr-only" id="import-json" type="file" accept="application/json">
         </div>
-      `}
-      ${renderInstallCard()}
-      <div class="card how-card">
-        <h2>Comment ça marche ?</h2>
-        <ol class="how-list">
-          <li>Crée une course.</li>
-          <li>Dessine ton parcours.</li>
-          <li>Ajoute tes temps de passage.</li>
-          <li>Lance le mode live.</li>
-          <li>Appuie sur “Point passé” à chaque ravito ou repère.</li>
-          <li>L’app calcule ton avance, ton retard, le temps restant et la distance restante.</li>
-        </ol>
+        <p>Crée ta course, dessine ton parcours et organise tes temps de passage avant le départ.</p>
+        <div class="actions two hero-actions">
+          <button class="button" type="button" data-route="#course/new">${hasCourses ? "Nouvelle course" : "Créer une course"}</button>
+          <label class="button secondary" for="import-json">Importer</label>
+        </div>
+        <input class="sr-only" id="import-json" type="file" accept="application/json">
       </div>
-      <div class="toolbar">
-        <button class="button secondary" type="button" data-action="export">Exporter JSON</button>
-      </div>
+      ${renderHomeSteps()}
       ${activeRun && activeRun.status !== "finished" ? `
         <div class="notice">
           Une course est en cours. Le chrono est sauvegardé localement.
           <button class="button success" type="button" data-route="#live">Reprendre le live</button>
         </div>
       ` : ""}
-      ${hasCourses ? `<div class="course-grid">${courses.map(renderCourseCard).join("")}</div>` : ""}
+      ${renderInstallCard()}
+      <section class="course-section">
+        <div class="section-title">
+          <div>
+            <p class="section-kicker">Stratégies</p>
+            <h2>${hasCourses ? "Tes courses" : "Aucune course pour le moment"}</h2>
+          </div>
+          ${hasCourses ? `<button class="button compact" type="button" data-route="#course/new">Nouvelle course</button>` : ""}
+        </div>
+        ${hasCourses ? `
+          <div class="course-grid">${courses.map(renderCourseCard).join("")}</div>
+        ` : `
+          <div class="empty-state compact-empty">
+            <h2>Commence par créer ta première course.</h2>
+            <p>Tu pourras ensuite dessiner le parcours, préparer tes temps de passage et lancer le mode live le jour J.</p>
+            <button class="button" type="button" data-route="#course/new">Créer ma première course</button>
+          </div>
+        `}
+      </section>
+      <div class="toolbar utility-toolbar">
+        <button class="button secondary" type="button" data-action="export">Exporter JSON</button>
+      </div>
     </section>
   `;
 
@@ -314,6 +311,40 @@ function renderHome() {
   app.querySelectorAll("[data-action='quick-start']").forEach((button) => {
     button.addEventListener("click", () => startRun(button.dataset.id));
   });
+}
+
+function renderHomeSteps() {
+  const steps = [
+    {
+      number: "1",
+      title: "Crée ta course",
+      text: "Nom, distance et objectif chrono clair."
+    },
+    {
+      number: "2",
+      title: "Dessine ton parcours",
+      text: "Place les points importants sur une base visuelle simple."
+    },
+    {
+      number: "3",
+      title: "Prépare tes temps",
+      text: "Ajoute ravitos, repères et temps de passage."
+    }
+  ];
+
+  return `
+    <div class="home-steps">
+      ${steps.map((step) => `
+        <article class="step-card">
+          <span>${step.number}</span>
+          <div>
+            <h3>${escapeHtml(step.title)}</h3>
+            <p>${escapeHtml(step.text)}</p>
+          </div>
+        </article>
+      `).join("")}
+    </div>
+  `;
 }
 
 function detectInstallContext() {
@@ -469,9 +500,10 @@ function renderCourseCard(course) {
   const routeStatus = getRouteDesignStatus(course);
   const splitStatus = getSplitPreparationStatus(course);
   const routeButtonLabel = routeStatus.ready ? "Modifier le parcours" : "Dessiner";
+  const completion = getCourseCompletion(course);
 
   return `
-    <article class="card course-card">
+    <article class="card course-card ${completion.readyForLive ? "is-ready" : ""}">
       <div class="card-header">
         <div>
           <h2>${escapeHtml(course.name)}</h2>
@@ -482,6 +514,9 @@ function renderCourseCard(course) {
             ${status ? `<span class="tag ${status.className}">${status.label}</span>` : ""}
           </div>
         </div>
+      </div>
+      <div class="course-progress" aria-label="Progression de préparation">
+        <span style="width: ${completion.percent}%"></span>
       </div>
       <div class="meta-grid">
         <div class="metric"><span>Distance</span><strong>${formatKm(course.distanceKm)}</strong></div>
@@ -500,6 +535,18 @@ function renderCourseCard(course) {
   `;
 }
 
+function getCourseCompletion(course) {
+  const routeReady = getRouteDesignStatus(course).ready;
+  const splitsReady = course.checkpoints.length > 0;
+  const done = 1 + (routeReady ? 1 : 0) + (splitsReady ? 1 : 0);
+  return {
+    percent: Math.round((done / 3) * 100),
+    readyForLive: splitsReady,
+    routeReady,
+    splitsReady
+  };
+}
+
 function getRouteDesignStatus(course) {
   const routeDesign = normalizeRouteDesign(course.routeDesign);
   const ready = routeDesign.points.length >= 2 && routeDesign.segments.length >= 1;
@@ -510,8 +557,8 @@ function getRouteDesignStatus(course) {
 
 function getSplitPreparationStatus(course) {
   return course.checkpoints.length
-    ? { ready: true, label: `${course.checkpoints.length} temps de passage`, className: "status-good" }
-    : { ready: false, label: "Splits à préparer", className: "status-warning" };
+    ? { ready: true, label: "Temps de passage prêts", className: "status-good" }
+    : { ready: false, label: "Temps de passage à préparer", className: "status-warning" };
 }
 
 function getCourseRunStatus(courseId) {
@@ -536,6 +583,11 @@ function renderCourseForm(courseId = null) {
     <section class="card guided-form-card">
       <form class="form" id="course-form" novalidate>
         <div id="form-errors"></div>
+        <div class="form-intro">
+          <p class="section-kicker">${editing ? "Modifier" : "Assistant"}</p>
+          <h2>${editing ? "Ajuster la course" : "Créer une course en 3 étapes"}</h2>
+          <p>${editing ? "Modifie les informations principales sans toucher aux parcours ou temps de passage déjà préparés." : "Renseigne l’essentiel, puis choisis si tu veux dessiner le parcours maintenant ou plus tard."}</p>
+        </div>
         <div class="form-section">
           <div>
             <p class="section-kicker">Étape 1</p>
@@ -675,6 +727,7 @@ function saveCourseFromForm(courseId) {
   course.updatedAt = now;
 
   saveCourses();
+  showToast(courseId ? "Course mise à jour" : "Course créée", "success");
   location.hash = !courseId && routeTiming === "now" ? `#route/${course.id}` : `#summary/${course.id}`;
 }
 
@@ -848,6 +901,7 @@ function saveCheckpointFromForm(courseId) {
   course.checkpoints.sort(sortByDistance);
   course.updatedAt = new Date().toISOString();
   saveCourses();
+  showToast("Temps de passage enregistré", "success");
   renderSplits(courseId);
 }
 
@@ -927,25 +981,39 @@ function renderSummary(courseId) {
   const routeStatus = getRouteDesignStatus(course);
   const splitStatus = getSplitPreparationStatus(course);
   const routeDesign = normalizeRouteDesign(course.routeDesign);
+  const completion = getCourseCompletion(course);
 
   app.innerHTML = `
     ${renderScreenNav(course.id)}
-    <section class="stack">
+    <section class="stack dashboard-screen">
       <div class="card dashboard-hero">
-        <h2>${escapeHtml(course.name)}</h2>
+        <div class="dashboard-title-row">
+          <div>
+            <p class="section-kicker">Tableau de bord</p>
+            <h2>${escapeHtml(course.name)}</h2>
+          </div>
+          <span class="tag ${completion.readyForLive ? "status-good" : "status-neutral"}">${completion.readyForLive ? "Prêt pour le live" : "Préparation en cours"}</span>
+        </div>
         <div class="meta-grid">
           <div class="metric"><span>Distance</span><strong>${formatKm(course.distanceKm)}</strong></div>
           <div class="metric"><span>Objectif</span><strong>${formatTime(course.targetSeconds)}</strong></div>
           <div class="metric"><span>Allure globale</span><strong>${formatPace(metrics.globalPace)}</strong></div>
           <div class="metric"><span>Type</span><strong>${escapeHtml(course.type)}</strong></div>
         </div>
+        <div class="course-progress wide" aria-label="Progression de préparation">
+          <span style="width: ${completion.percent}%"></span>
+        </div>
         ${course.notes ? `<p>${escapeHtml(course.notes)}</p>` : ""}
       </div>
       ${alert ? `<div class="notice warning">${escapeHtml(alert)}</div>` : ""}
+      ${renderPreparationChecklist(course, routeStatus, splitStatus)}
       <div class="dashboard-grid">
-        <article class="card dashboard-card">
+        <article class="card dashboard-card status-card">
           <div class="card-header">
-            <h2>Parcours</h2>
+            <div>
+              <p class="section-kicker">Étape 1</p>
+              <h2>Parcours</h2>
+            </div>
             <span class="tag ${routeStatus.className}">${routeStatus.label}</span>
           </div>
           ${routeStatus.ready ? `
@@ -961,9 +1029,12 @@ function renderSummary(courseId) {
           `}
         </article>
 
-        <article class="card dashboard-card">
+        <article class="card dashboard-card status-card">
           <div class="card-header">
-            <h2>Temps de passage</h2>
+            <div>
+              <p class="section-kicker">Étape 2</p>
+              <h2>Temps de passage</h2>
+            </div>
             <span class="tag ${splitStatus.className}">${splitStatus.label}</span>
           </div>
           ${course.checkpoints.length ? `
@@ -978,8 +1049,11 @@ function renderSummary(courseId) {
           `}
         </article>
 
-        <article class="card dashboard-card">
-          <h2>Objectif</h2>
+        <article class="card dashboard-card status-card">
+          <div>
+            <p class="section-kicker">Réglages</p>
+            <h2>Objectif chrono</h2>
+          </div>
           <div class="meta-grid">
             <div class="metric"><span>Chrono</span><strong>${formatTime(course.targetSeconds)}</strong></div>
             <div class="metric"><span>Allure moyenne</span><strong>${formatPace(metrics.globalPace)}</strong></div>
@@ -987,10 +1061,13 @@ function renderSummary(courseId) {
           <button class="button secondary" type="button" data-route="#course/${course.id}/edit">Modifier la course</button>
         </article>
 
-        <article class="card dashboard-card">
-          <h2>Mode live</h2>
-          <p class="muted-text">Lance le chrono manuel quand ta stratégie est prête.</p>
-          <button class="button success" type="button" data-action="start-run" ${course.checkpoints.length ? "" : "disabled"}>Lancer le mode course</button>
+        <article class="card dashboard-card status-card live-card">
+          <div>
+            <p class="section-kicker">Étape 3</p>
+            <h2>Course en direct</h2>
+          </div>
+          <p class="muted-text">${course.checkpoints.length ? "Lance le chrono manuel quand tu es au départ." : "Prépare au moins un temps de passage pour activer le live."}</p>
+          <button class="button success" type="button" data-action="start-run" ${course.checkpoints.length ? "" : "disabled"}>Lancer le mode live</button>
         </article>
       </div>
       <div class="card">
@@ -1007,6 +1084,58 @@ function renderSummary(courseId) {
 
   const startButton = app.querySelector("[data-action='start-run']");
   if (startButton) startButton.addEventListener("click", () => startRun(course.id));
+}
+
+function renderPreparationChecklist(course, routeStatus, splitStatus) {
+  const items = [
+    {
+      label: "Course créée",
+      state: "done",
+      text: `${formatKm(course.distanceKm)} · objectif ${formatTime(course.targetSeconds)}`
+    },
+    {
+      label: "Parcours dessiné",
+      state: routeStatus.ready ? "done" : "todo",
+      text: routeStatus.ready ? "Base visuelle prête." : "À dessiner pour mieux visualiser la course."
+    },
+    {
+      label: "Temps de passage préparés",
+      state: splitStatus.ready ? "done" : "todo",
+      text: splitStatus.ready ? `${course.checkpoints.length} point${course.checkpoints.length > 1 ? "s" : ""} prêt${course.checkpoints.length > 1 ? "s" : ""}.` : "À préparer avant le mode live."
+    },
+    {
+      label: "Prêt pour le live",
+      state: splitStatus.ready ? "done" : "locked",
+      text: splitStatus.ready ? "Le chrono manuel peut être lancé." : "Disponible après les temps de passage."
+    }
+  ];
+
+  return `
+    <div class="card prep-checklist">
+      <div class="section-title compact-title">
+        <div>
+          <p class="section-kicker">Préparation</p>
+          <h2>Avancer dans le bon ordre</h2>
+        </div>
+      </div>
+      <div class="checklist-grid">
+        ${items.map(renderChecklistItem).join("")}
+      </div>
+    </div>
+  `;
+}
+
+function renderChecklistItem(item) {
+  const label = item.state === "done" ? "Terminé" : item.state === "locked" ? "Bloqué" : "À faire";
+  return `
+    <div class="checklist-item is-${item.state}">
+      <span class="check-dot"></span>
+      <div>
+        <strong>${escapeHtml(item.label)}</strong>
+        <small>${escapeHtml(label)} · ${escapeHtml(item.text)}</small>
+      </div>
+    </div>
+  `;
 }
 
 function renderSummaryCheckpoint(course, checkpoint, index) {
@@ -1048,7 +1177,7 @@ function renderRouteEditor(courseId) {
         </div>
         <button class="button secondary" type="button" data-route="#summary/${course.id}">Retour vers la course</button>
       </div>
-      <div class="card route-tools">
+      <div class="card route-tools toolbar route-toolbar">
         <div class="route-status-row">
           <strong id="route-mode-label">Mode actuel : Ligne droite</strong>
           <span id="route-count" class="tag gray">0 point · 0 segment</span>
@@ -1185,7 +1314,11 @@ function renderRouteEditor(courseId) {
     routeEditorDirty = false;
     status.textContent = "Parcours sauvegardé.";
     status.classList.remove("is-dirty");
+    showToast("Parcours sauvegardé", "success");
     renderDraft();
+    window.setTimeout(() => {
+      if (!routeEditorDirty) status.textContent = "Tout est sauvegardé.";
+    }, 1400);
   });
 
   setMode(segmentMode);
@@ -1700,6 +1833,7 @@ function duplicateCourse(courseId) {
   copy.checkpoints = copy.checkpoints.map((checkpoint) => ({ ...checkpoint, id: uid() }));
   courses.push(copy);
   saveCourses();
+  showToast("Course dupliquée", "success");
   renderHome();
 }
 
@@ -1714,6 +1848,7 @@ function confirmDeleteCourse(courseId) {
       saveActiveRun();
     }
     saveCourses();
+    showToast("Course supprimée", "success");
     renderHome();
   });
 }
@@ -1725,6 +1860,7 @@ function confirmDeleteCheckpoint(courseId, checkpointId) {
     course.checkpoints = course.checkpoints.filter((item) => item.id !== checkpointId);
     course.updatedAt = new Date().toISOString();
     saveCourses();
+    showToast("Temps de passage supprimé", "success");
     renderSplits(courseId);
   });
 }
@@ -1743,6 +1879,7 @@ function exportCourses() {
   link.download = "race-split-assistant-export.json";
   link.click();
   URL.revokeObjectURL(url);
+  showToast("Export JSON préparé", "success");
 }
 
 function importCourses(event) {
@@ -1768,8 +1905,10 @@ function importCourses(event) {
 
       courses = mergeCourses(courses, cleaned);
       saveCourses();
+      showToast("Import terminé", "success");
       renderHome();
     } catch (error) {
+      showToast("Import impossible", "danger");
       showModal("Import impossible. Vérifiez que le fichier JSON vient bien de Race Split Assistant.");
     }
   };
@@ -2149,6 +2288,27 @@ function showErrors(errors) {
 
 function showModal(message) {
   confirmDialog(message, null, false);
+}
+
+function showToast(message, type = "neutral") {
+  let container = document.querySelector("#toast-container");
+  if (!container) {
+    container = document.createElement("div");
+    container.id = "toast-container";
+    container.className = "toast-container";
+    container.setAttribute("aria-live", "polite");
+    document.body.appendChild(container);
+  }
+
+  const toast = document.createElement("div");
+  toast.className = `toast toast-${type}`;
+  toast.textContent = message;
+  container.appendChild(toast);
+
+  window.setTimeout(() => {
+    toast.classList.add("is-leaving");
+    window.setTimeout(() => toast.remove(), 220);
+  }, 2600);
 }
 
 function confirmDialog(message, onConfirm, showCancel = true) {
